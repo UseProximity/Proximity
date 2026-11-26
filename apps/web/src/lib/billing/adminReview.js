@@ -25,10 +25,10 @@ import { invoiceAttentionReason } from "./overdue.js";
 import { DAY_MS } from "./constants.js";
 
 const ADMIN_COLUMNS = `
-  id, landlord_id, amount_cents, description, trigger_type, trigger_ref, status, created_at,
+  id, landlord_id, payer_id, amount_cents, description, trigger_type, trigger_ref, status, created_at,
   pending_at, contested_at, contest_reason, resolved_at, resolution_note, is_test,
   signed_rent_cents, commission_rate_percent,
-  landlord:users!landlord_id(name, email),
+  landlord:users!landlord_id(name, email, company_name),
   listing:listings!listing_id(title, address),
   lease:unit_leases!lease_id(lease_term_months, listing_units!unit_id(name, unit_designator, unit_number, bedrooms)),
   student:users!student_id(name)

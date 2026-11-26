@@ -1,7 +1,7 @@
 {
   "_description": "All files in src/lib and src/utils: path + first line of their file header comment.",
-  "_generated": "2026-11-25T19:42:47.646Z",
-  "count": 372,
+  "_generated": "2026-11-26T20:17:44.288Z",
+  "count": 373,
   "utils": [
     {
       "file": "src/lib/admin/adminDb.js",
@@ -396,6 +396,10 @@
       "description": "Versions of the marketing agreement document (agreement_versions). An admin"
     },
     {
+      "file": "src/lib/billing/authorizedPayers.js",
+      "description": "An authorized payer for a landlord account, or for one of its listings (Wyatt,"
+    },
+    {
       "file": "src/lib/billing/autopay.js",
       "description": "Autopay: a landlord may let Proximity charge their monthly invoice to a saved"
     },
@@ -557,7 +561,7 @@
     },
     {
       "file": "src/lib/billing/payerLinks.js",
-      "description": "Who pays for a landlord account (billing_payers, Project B, Wyatt 2026-11-09)."
+      "description": "Who signs and who pays for a landlord account (billing_payers)."
     },
     {
       "file": "src/lib/billing/payers.js",

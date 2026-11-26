@@ -48,8 +48,8 @@ export async function landlordFlags(db, landlordIds) {
     read(db.from("agreement_version_landlords").select("version_id, landlord_id, kind").eq("live", true).in("landlord_id", ids)),
     read(db.from("landlord_agreements").select("id, user_id, status, provider, provider_envelope_id, version_id, signed_at").in("user_id", ids).in("status", ["signed", ...PENDING])),
     read(db.from("agreement_amendments").select("id, user_id, signer_id, status, version_id, provider_envelope_id").eq("status", "sent")),
-    read(db.from("billing_payers").select("landlord_id, payer_id, signer_name").eq("status", "active").is("listing_id", null).in("landlord_id", ids)),
-    read(db.from("billing_payers").select("landlord_id, payer_id").eq("status", "active").in("payer_id", ids)),
+    read(db.from("billing_payers").select("landlord_id, payer_id, signer_name").eq("role", "signer").eq("status", "active").is("listing_id", null).in("landlord_id", ids)),
+    read(db.from("billing_payers").select("landlord_id, payer_id").eq("role", "signer").eq("status", "active").in("payer_id", ids)),
   ]);
 
   const versionIds = [...new Set([...onVersions.map((r) => r.version_id), ...masters.map((m) => m.version_id)].filter(Boolean))];
@@ -84,7 +84,8 @@ export async function landlordFlags(db, landlordIds) {
       openCopies: { master: openMasters.map((m) => m.version_id ?? null), amendment: openAmendments.map((a) => a.version_id ?? null) },
       paperOut: pending.some((m) => m.provider === PAPER && m.status === "sent"),
       signer: link ? { id: link.payer_id, name: link.signer_name || nameOf(userById.get(link.payer_id)) } : null,
-      signsFor: asPayer.filter((r) => r.payer_id === id).map((r) => ({ id: r.landlord_id, name: nameOf(userById.get(r.landlord_id)) })),
+      // One entry per account, however many of its listings they sign for.
+      signsFor: [...new Set(asPayer.filter((r) => r.payer_id === id).map((r) => r.landlord_id))].map((landlordId) => ({ id: landlordId, name: nameOf(userById.get(landlordId)) })),
     });
   }
   return out;
