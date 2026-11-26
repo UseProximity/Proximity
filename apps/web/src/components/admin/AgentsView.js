@@ -13,10 +13,11 @@ import toast from "react-hot-toast";
 import AgentsLaunchPanel from "@/components/admin/AgentsLaunchPanel";
 import AgentsKnowledgeView from "@/components/admin/AgentsKnowledgeView";
 import AgentChangeCard from "@/components/admin/AgentChangeCard";
+import SyncDecisions from "@/components/admin/SyncDecisions";
 import { ListingLink } from "@/components/admin/RecordLink";
 import { useAdminNav, useUrlTab } from "@/components/admin/adminShared";
 
-const TABS = [["overview", "Launch and review"], ["knowledge", "Knowledge"]];
+const TABS = [["overview", "Launch and review"], ["decisions", "Sync decisions"], ["knowledge", "Knowledge"]];
 const TAB_KEYS = TABS.map(([k]) => k);
 
 function Tabs({ tab, setTab }) {
@@ -152,6 +153,7 @@ export default function AgentsView({ search = "" }) {
   };
 
   if (tab === "knowledge") return <div><Tabs tab={tab} setTab={setTab} /><AgentsKnowledgeView search={search} /></div>;
+  if (tab === "decisions") return <div><Tabs tab={tab} setTab={setTab} /><SyncDecisions search={search} readOnly={readOnly} /></div>;
   if (error) return <div><Tabs tab={tab} setTab={setTab} /><div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">{error}</div></div>;
   if (!data) return <div><Tabs tab={tab} setTab={setTab} /><div className="py-20 text-center text-sm text-gray-400">Loading agents...</div></div>;
 

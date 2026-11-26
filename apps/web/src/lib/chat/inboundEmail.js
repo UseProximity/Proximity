@@ -46,6 +46,7 @@
 import { randomUUID } from "node:crypto";
 import { GetObjectCommand, PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
 import { simpleParser } from "mailparser";
+import { after } from "next/server";
 import supabase from "@/lib/supabase";
 import { outreachEnabled } from "@/lib/appEnv";
 import { getBaseUrl, sendReplyNotDeliveredEmail } from "@/lib/email";
@@ -71,6 +72,7 @@ import { recordAttachmentScan } from "@/lib/chat/sendGuards";
 import { findQuestionToken, handleQuestionEmail } from "@/lib/agents/questionEmail";
 import { findAgentReplyToken, handleAgentReplyEmail } from "@/lib/agents/replyEmail";
 import { detectTourProposal } from "@/lib/agents/tourProposals";
+import { detectListingUpdate } from "@/lib/agents/chatListingUpdates";
 
 const MAX_BODY = 5000;
 // An inline image this small is a signature logo, a social icon or a tracking
@@ -632,6 +634,17 @@ async function processOne({ bucket, key, recipients }) {
 
     // A tour time suggested by email is spotted before the alert, which carries its Confirm.
     await detectTourProposal({ threadId, messageId: sent.messageId, senderId: userId, body });
+    // A landlord saying the listing changed ("it's been leased") is read for the
+    // listing after the relay: the read takes seconds, and a batch of held
+    // replies released together must not run out of time. As of the day the
+    // email was written, so a reply held for days is not read as today's news.
+    const readListing = () => detectListingUpdate({ threadId, messageId: sent.messageId, senderId: userId, body, createdAt: parsed.date instanceof Date && !Number.isNaN(parsed.date.getTime()) ? parsed.date.toISOString() : null });
+    try {
+      after(readListing);
+    } catch {
+      // Outside a request (a script): read it now. Never throws.
+      await readListing();
+    }
     // A reply is a complete thought: relay it at once, no quiet window.
     await notifyNewChatMessage({
       threadId,

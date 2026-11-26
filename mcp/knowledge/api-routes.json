@@ -1,7 +1,7 @@
 {
   "_description": "All Next.js API routes. auth (route-level = strongest across methods; methodAuth = per HTTP method): public=no auth, optional=personalizes for a session but serves anonymous a safe response, any=any signed-in user, landlord+=landlord or super, super=super admin only.",
-  "_generated": "2026-11-26T19:59:10.597Z",
-  "count": 289,
+  "_generated": "2026-11-26T20:59:08.442Z",
+  "count": 291,
   "routes": [
     {
       "path": "/api/account",
@@ -91,6 +91,34 @@
         "listing_agents"
       ],
       "file": "src/app/api/admin/agents/route.js"
+    },
+    {
+      "path": "/api/admin/agents/compare",
+      "methods": [
+        "POST"
+      ],
+      "auth": "admin",
+      "methodAuth": {
+        "POST": "admin"
+      },
+      "tables": [],
+      "file": "src/app/api/admin/agents/compare/route.js"
+    },
+    {
+      "path": "/api/admin/agents/decisions",
+      "methods": [
+        "GET",
+        "POST"
+      ],
+      "auth": "admin",
+      "methodAuth": {
+        "GET": "admin",
+        "POST": "admin"
+      },
+      "tables": [
+        "sync_fix_items"
+      ],
+      "file": "src/app/api/admin/agents/decisions/route.js"
     },
     {
       "path": "/api/admin/agents/knowledge",
@@ -705,6 +733,7 @@
         "chat_messages",
         "chat_attachments",
         "chat_moderation_events",
+        "chat_listing_reads",
         "tour_requests",
         "chat_inbound_emails",
         "landlord_reply_senders",
@@ -2868,13 +2897,17 @@
     {
       "path": "/api/landlord/listings/[listingId]/agent/changes",
       "methods": [
+        "GET",
         "POST"
       ],
       "auth": "public",
       "methodAuth": {
+        "GET": "public",
         "POST": "public"
       },
-      "tables": [],
+      "tables": [
+        "chat_messages"
+      ],
       "file": "src/app/api/landlord/listings/[listingId]/agent/changes/route.js"
     },
     {

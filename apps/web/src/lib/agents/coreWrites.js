@@ -20,7 +20,7 @@ import { canManageLease, isPropertyOwner } from "@/lib/listings/ownership";
 import { checkListingDescription } from "@/lib/contentRules";
 import { cleanUnitName } from "@/utils/unitName";
 import { findUnitNamed } from "@/lib/listings/unitNames";
-import { setFact } from "./store";
+import { setFact, retireFact } from "./store";
 import { checkListingGate, coverageOnly, gateResponseBody, isLeaseHeldForBilling, HELD_FOR_BILLING_MESSAGE } from "@/lib/billing/listingGate";
 import { money, shortDate } from "./sections";
 
@@ -87,6 +87,30 @@ export async function markLandlordSet({ listingId, target, id = null, fields, us
 }
 
 /*
+ * Undo of a change read from a landlord's chat message (chatListingUpdates.js):
+ * the provenance goes back to what it was before, so the lease is no more
+ * "set by the landlord" than it was (PR 484 review). Retires the record the
+ * change wrote, if it is still the current one, and makes the earlier one
+ * current again when nothing has replaced it since.
+ */
+export async function restoreCoreProvenance({ listingId, leaseId, field, prior = null, wrote = null, userId = null, undid = null }) {
+  const fieldKey = `core.lease.${field}`;
+  const current = async () => {
+    const { data } = await supabase.from("listing_facts").select("id").eq("listing_id", listingId).eq("section", "core")
+      .eq("field_key", fieldKey).eq("scope_level", "lease").eq("scope_id", leaseId).eq("is_current", true).maybeSingle();
+    return data?.id ?? null;
+  };
+  const now = await current();
+  // Something newer than the chat change holds the field: it stands.
+  if (now && now !== wrote) return;
+  if (now) await retireFact({ factId: now, cause: "revert", actorId: userId, detail: { undid } });
+  if (prior && !(await current())) {
+    const { error } = await supabase.from("listing_facts").update({ is_current: true, superseded_by: null }).eq("id", prior).eq("is_current", false);
+    if (error) console.error("[agents] restoring provenance failed:", error.message);
+  }
+}
+
+/*
  * A dashboard route saved these fields: record them as landlord-set once the
  * page has answered. In after(), so the work is finished before the server
  * rests: left loose it could be paused part way and land minutes later.
@@ -126,7 +150,7 @@ export async function recentlyClaimed(userId, listingId) {
  * signed in place); "billing": a payment method or an overdue invoice (Billing).
  * Null when it may go live.
  */
-async function relistBlocked({ lease, listingId }) {
+export async function relistBlocked({ lease, listingId }) {
   const unitName = lease.listing_units?.name || "this unit";
   if (await isLeaseHeldForBilling(supabase, lease.id)) {
     return { error: `I can't put ${unitName} back on the market yet. ${HELD_FOR_BILLING_MESSAGE}`, blocked: { kind: "billing", unitName } };

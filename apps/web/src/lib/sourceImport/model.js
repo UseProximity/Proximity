@@ -354,6 +354,43 @@ export async function judgeChange({ listingLabel, unitLabel, field, oldValue, ne
 }
 
 /*
+ * The rare checker (checker.js): one stuck sync change, settled by Sonnet
+ * from the page text, with what code should have caught. Returns
+ * { verdict: "apply" | "leave", reason, fix, cost } or null.
+ */
+const CheckSchema = z.object({ verdict: z.enum(["apply", "leave"]), reason: z.string(), fix: z.string() });
+export async function checkStuckChange({ listingLabel, change, evidence, why }) {
+  const content =
+    `Listing: ${listingLabel}
+Change the daily website sync found: ${change}
+Why the sync has not applied it: ${why}
+
+` +
+    `TEXT FROM THE LANDLORD'S WEBSITE (the part about this unit):
+${String(evidence ?? "").slice(0, 6000)}
+
+` +
+    `1. verdict: "apply" only if the website text clearly states this change for this unit; otherwise "leave".
+` +
+    `2. reason: one or two plain sentences.
+` +
+    `3. fix: what the sync's code (fixed text patterns that read a unit's block, and yes/no questions put to a small decision model) should do differently so it settles this kind of case itself next time. Be concrete: name the wording on the page that tripped it.`;
+  try {
+    const { parsed, cost } = await parseWith(SONNET, {
+      system: "You check one change a rental-listing website sync could not settle by itself. Be exact and conservative: a starting-at price is not a lease's price, and a unit the page does not name is not confirmed.",
+      schema: CheckSchema,
+      content,
+      maxTokens: 900,
+      tag: "sync-checker",
+    });
+    return parsed ? { ...parsed, cost } : null;
+  } catch (err) {
+    console.error(`[source-sync] checker: ${err?.message ?? err}`);
+    return null;
+  }
+}
+
+/*
  * Which pages to open next, chosen by the model.
  *
  * The read tells it, from what the readers and earlier extraction actually
