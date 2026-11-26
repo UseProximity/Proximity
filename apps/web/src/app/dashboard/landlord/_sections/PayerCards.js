@@ -101,7 +101,14 @@ const STATUS = {
 };
 
 // The landlord's agreement card once a payer is named: status only (Wyatt, 2026-11-09).
+// A listing's own signer (view.scope "listing", Wyatt 2026-11-25) gets the same
+// card for just that listing: every action carries its listingId, and there is
+// no "sign my own agreement" takeover, only Revoke.
 export function PayerCard({ view, onChanged }) {
+  const forListing = view.scope === "listing";
+  const scope = forListing ? { listingId: view.listingId } : {};
+  // After a change: the account card takes the new view; a listing card reloads the page's data.
+  const changed = (next) => onChanged(forListing ? null : next);
   const [busy, setBusy] = useState(false);
   const [changing, setChanging] = useState(false);
   // Revoking the signer: the confirmation is open, or the landlord is signing
@@ -118,7 +125,7 @@ export function PayerCard({ view, onChanged }) {
     try {
       const r = await call("/api/billing/payer/requests", { method: "POST", body: { listingIds: [listingId] } });
       toast.success(`Sent to ${view.payer.name} again.`);
-      onChanged(r.payer);
+      changed(r.payer);
     } catch (e) {
       toast.error(e.message);
     } finally {
@@ -129,11 +136,13 @@ export function PayerCard({ view, onChanged }) {
   const revoke = async () => {
     setBusy(true);
     try {
-      const r = await call("/api/billing/payer", { method: "PATCH", body: { action: "revoke", confirm: true } });
+      const r = await call("/api/billing/payer", { method: "PATCH", body: { action: "revoke", confirm: true, ...scope } });
       toast.success(
-        r.released
-          ? `${view.payer.name} is no longer your authorized signer. Your listings aren't covered until you sign the agreement.`
-          : `${view.payer.name} is no longer your authorized signer.`
+        forListing
+          ? `${view.payer.name} no longer signs for ${view.listingAddress}.${r.released ? " It isn't covered until it is signed for again." : ""}`
+          : r.released
+            ? `${view.payer.name} is no longer your authorized signer. Your listings aren't covered until you sign the agreement.`
+            : `${view.payer.name} is no longer your authorized signer.`
       );
       setRevoking(false);
       onChanged(null);
@@ -147,10 +156,10 @@ export function PayerCard({ view, onChanged }) {
   const act = async (body, done) => {
     setBusy(true);
     try {
-      const r = await call("/api/billing/payer", { method: "PATCH", body });
+      const r = await call("/api/billing/payer", { method: "PATCH", body: { ...body, ...scope } });
       toast.success(done);
       setChanging(false);
-      onChanged(r.payer);
+      changed(r.payer);
     } catch (e) {
       toast.error(e.message);
     } finally {
@@ -160,16 +169,26 @@ export function PayerCard({ view, onChanged }) {
 
   return (
     <CollapsibleSection
-      id="marketing-agreement"
-      title="Marketing agreement"
-      defaultOpen
+      id={forListing ? `listing-signer-${view.listingId}` : "marketing-agreement"}
+      title={forListing ? `Marketing agreement: ${view.listingAddress}` : "Marketing agreement"}
+      defaultOpen={!forListing || view.status !== "signed"}
       badge={<span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${status.className}`}>{status.label}</span>}
-      summary={`Authorized signer: ${view.payer.name}.`}
+      summary={forListing ? `${view.payer.name} signs for this listing only.` : `Authorized signer: ${view.payer.name}.`}
     >
       <div className="space-y-4 px-4 py-4">
         <p className="text-sm text-gray-700">
           {view.status === "signed"
-            ? `${view.payer.name} signed the agreement for your account${view.signedAt ? ` on ${dateOnly(view.signedAt)}` : ""}. They receive and pay your invoices.`
+            ? `${view.payer.name} signed the agreement for ${forListing ? "this listing" : "your account"}${view.signedAt ? ` on ${dateOnly(view.signedAt)}` : ""}.${
+                view.signerChecklist?.paymentMethodTheirs === false
+                  ? view.signerChecklist.paidBy
+                    ? ` ${view.signerChecklist.paidBy} receives and pays the invoices as your authorized payer.`
+                    : ""
+                  : view.signerChecklist?.paidBy
+                    ? ` They receive and pay the invoices, except where ${view.signerChecklist.paidBy} is the authorized payer.`
+                    : forListing
+                      ? " They receive and pay its invoices."
+                      : " They receive and pay your invoices."
+              }`
             : view.status === "declined"
               ? `${view.payer.name} declined to sign, so the listings below aren't covered. They can still sign, or use Change signer to name someone else. Questions? Email info@useproximity.org.`
               : `Waiting for ${view.payer.name} (${view.payer.email}) to sign. We emailed them on ${dateOnly(view.payer.invitedAt)}.`}
@@ -177,12 +196,18 @@ export function PayerCard({ view, onChanged }) {
 
         {view.signerChecklist && (
           <div>
-            <p className="text-sm font-medium text-gray-900">Before your listings can go live, {view.payer.name} needs to:</p>
+            <p className="text-sm font-medium text-gray-900">Before {forListing ? "this listing" : "your listings"} can go live, {view.payer.name} needs to:</p>
             <ul className="mt-1 space-y-1.5">
               <Requirement done={view.signerChecklist.agreementSigned}>Sign the marketing agreement</Requirement>
-              <Requirement done={view.signerChecklist.paymentMethodAdded}>Add a payment method</Requirement>
+              {view.signerChecklist.paymentMethodTheirs !== false && <Requirement done={view.signerChecklist.paymentMethodAdded}>Add a payment method</Requirement>}
             </ul>
-            <p className="mt-1 text-xs text-gray-500">Your own payment method doesn&apos;t count: {view.payer.name} pays the invoices.</p>
+            <p className="mt-1 text-xs text-gray-500">
+              {view.signerChecklist.paymentMethodTheirs === false
+                ? `The invoices go to ${view.signerChecklist.paidBy || "your authorized payer"}, so the payment method is theirs to add.`
+                : view.signerChecklist.paidBy
+                  ? `${view.payer.name} pays the invoices, except where ${view.signerChecklist.paidBy} is the authorized payer.`
+                  : `Your own payment method doesn't count: ${view.payer.name} pays the invoices.`}
+            </p>
           </div>
         )}
 
@@ -195,7 +220,7 @@ export function PayerCard({ view, onChanged }) {
                   {w.address}{" "}
                   <span className="text-xs text-gray-500">
                     {w.waitingFor === "payment_method"
-                      ? `(approved, waiting for ${view.payer.name} to add a payment method)`
+                      ? `(approved, waiting for ${w.methodOf || view.payer.name} to add a payment method)`
                       : w.waitingFor === "approval"
                         ? "(approved)"
                         : `(waiting for ${view.payer.name}, sent ${dateOnly(w.since)})`}
@@ -216,7 +241,7 @@ export function PayerCard({ view, onChanged }) {
                   {a.address}{" "}
                   <span className="text-xs text-gray-500">
                     {a.waitingFor === "payment_method"
-                      ? `(you can publish it once ${view.payer.name} adds a payment method)`
+                      ? `(you can publish it once ${a.methodOf || view.payer.name} adds a payment method)`
                       : `(approved ${dateOnly(a.approvedAt)}, publish it from your drafts)`}
                   </span>
                 </li>
@@ -276,13 +301,21 @@ export function PayerCard({ view, onChanged }) {
         )}
         {!revoking && (
           <button type="button" className="text-xs text-gray-500 underline hover:text-gray-700" disabled={busy} onClick={() => { setChanging(false); setRevoking(true); }}>
-            Revoke authorized signer
+            {forListing ? "Remove this listing's signer" : "Revoke authorized signer"}
           </button>
         )}
 
         {revoking && (
           <div className="space-y-3 rounded-md border border-gray-200 px-3 py-3 text-sm text-gray-800">
-            {view.covered.length > 0 ? (
+            {forListing ? (
+              <p>
+                Remove {view.payer.name} as the signer for {view.listingAddress}?{" "}
+                {view.covered.length > 0
+                  ? "It comes off their agreement and is no longer covered by a marketing agreement until it is signed for again. If it is live it stays on the site, but nothing new can be published there until then."
+                  : "The link we sent them stops working for it."}{" "}
+                After that, whoever signs for the rest of your account signs for it.
+              </p>
+            ) : view.covered.length > 0 ? (
               <>
                 <p>
                   {view.payer.name} signed for {view.covered.length === 1 ? "1 listing" : `${view.covered.length} listings`} of yours. If you revoke them,{" "}
@@ -306,9 +339,9 @@ export function PayerCard({ view, onChanged }) {
                 Cancel
               </button>
               <button type="button" className={BUTTON} disabled={busy} onClick={revoke}>
-                {view.covered.length > 0 ? "Revoke without signing" : "Revoke signer"}
+                {forListing ? "Remove signer" : view.covered.length > 0 ? "Revoke without signing" : "Revoke signer"}
               </button>
-              {view.covered.length > 0 && (
+              {!forListing && view.covered.length > 0 && (
                 <button type="button" className={PRIMARY} disabled={busy} onClick={() => setTakingOver(true)}>
                   Sign my own agreement
                 </button>
@@ -368,6 +401,8 @@ export function PayerCard({ view, onChanged }) {
  * before anything new goes live (Wyatt, 2026-11-09).
  */
 export function SignerChecklist({ accounts, hasPaymentMethod }) {
+  // An authorized payer invoiced for everything they sign for: no payment method is theirs to add.
+  const pays = accounts.some((a) => a.pays !== false);
   const signed = !accounts.some((a) => a.needs === "agreement" || a.needs === "paper");
   const addendaDue = accounts.filter((a) => a.needs === "addendum").length;
   const held = accounts.reduce((n, a) => n + (a.waitingOnPaymentMethod?.length ?? 0), 0);
@@ -379,13 +414,15 @@ export function SignerChecklist({ accounts, hasPaymentMethod }) {
         <Requirement done={addendaDue === 0}>
           {addendaDue ? `Sign the addendum ${addendaDue === 1 ? "one account is" : `${addendaDue} accounts are`} waiting on` : "Sign any addenda the landlords send you"}
         </Requirement>
-        <Requirement done={hasPaymentMethod}>Add a payment method</Requirement>
+        {pays && <Requirement done={hasPaymentMethod}>Add a payment method</Requirement>}
       </ul>
       <p className="mt-2 text-xs text-gray-500">
         {held
           ? `${held} ${held === 1 ? "listing is" : "listings are"} verified but held until you add a payment method. `
           : ""}
-        These are yours as the authorized signer: the landlord&apos;s own payment method doesn&apos;t count.
+        {pays
+          ? "These are yours as the authorized signer: the landlord's own payment method doesn't count."
+          : "The invoices go to the landlord's authorized payer, so there is no payment method for you to add."}
       </p>
     </section>
   );

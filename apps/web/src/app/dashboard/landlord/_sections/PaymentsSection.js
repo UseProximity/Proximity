@@ -10,6 +10,7 @@ import AgreementCard, { PublishChecklist } from "./AgreementCard";
 import ChangeRequestPanel from "./ChangeRequestPanel";
 import ContestChargeModal from "./ContestChargeModal";
 import { PaidForAccounts, PayerCard, SignerChecklist } from "./PayerCards";
+import { PayingForCard, WhoSignsAndPays } from "./SignersAndPayers";
 import { BillingViewAsProvider, ReadOnlyGuard, withViewAs } from "./billingViewAs";
 
 const NOTICES = {
@@ -58,6 +59,12 @@ function PaymentsContent({ viewAsId }) {
   const [payer, setPayer] = useState(null);
   const [payees, setPayees] = useState([]);
   const [billedTo, setBilledTo] = useState(null);
+  // Wyatt, 2026-11-25: listings with their own signer, who signs and pays for
+  // each listing, this account's authorized payers, and what this user pays for.
+  const [listingSigners, setListingSigners] = useState([]);
+  const [assignments, setAssignments] = useState(null);
+  const [authorizedPayers, setAuthorizedPayers] = useState(null);
+  const [payingFor, setPayingFor] = useState([]);
   const [summary, setSummary] = useState({ balanceCents: 0, inReviewCents: 0 });
   const [contesting, setContesting] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -73,14 +80,21 @@ function PaymentsContent({ viewAsId }) {
 
   const load = useCallback(async () => {
     const read = (url) => call(withViewAs(url, viewAsId));
-    const [m, c, i, g, p, a] = await Promise.all([
+    const [m, c, i, g, p, a, who, ap, pf] = await Promise.all([
       read("/api/billing/payment-methods"),
       read("/api/billing/charges"),
       read("/api/billing/invoices"),
       read("/api/billing/gate"),
       read("/api/billing/payer"),
       read("/api/billing/payees"),
+      read("/api/billing/assignments"),
+      read("/api/billing/authorized-payers"),
+      read("/api/billing/paying-for"),
     ]);
+    setListingSigners(p.listingSigners ?? []);
+    setAssignments(who);
+    setAuthorizedPayers(ap);
+    setPayingFor(pf.accounts ?? []);
     setMethods(m.methods);
     setCharges(c.charges);
     setSummary(c.summary);
@@ -240,20 +254,39 @@ function PaymentsContent({ viewAsId }) {
   // the agreement's status and the charges. Safety net: an invoice still in the
   // landlord's own name (from before the signer, or an admin charge) stays
   // payable here, so it never goes overdue unseen.
+  const reload = () => load().catch((e) => toast.error(e.message));
+  // A card per listing with its own signer, and who signs and pays for everything.
+  const listingCards = listingSigners.map((v) => <PayerCard key={v.linkId} view={v} onChanged={reload} />);
+  const whoCard = gate && !gate.billingOnly ? <WhoSignsAndPays data={assignments} payers={authorizedPayers} onChanged={reload} /> : null;
+  const payingForCard = <PayingForCard accounts={payingFor} onChanged={reload} />;
+
   if (payer) {
     const ownOpen = invoices.filter((inv) => ["open", "failed", "processing"].includes(inv.status));
+    const paysForOthers = payingFor.some((a) => a.status === "accepted");
     return (
       <div className="space-y-4 max-w-3xl">
         {error && <div className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-800">{error}</div>}
-        <PayerCard view={payer} onChanged={(next) => (next ? setPayer(next) : load().catch(() => {}))} />
+        {payingForCard}
+        <PayerCard view={payer} onChanged={(next) => (next ? setPayer(next) : reload())} />
+        {listingCards}
+        {whoCard}
         <ChargesCard charges={charges} summary={summary} busy={busy} onApprove={approve} onContest={setContesting} billedTo={billedTo ?? payer.payer.name} />
-        {ownOpen.length > 0 && (
-          <>
-            <p className="text-sm text-gray-700">These invoices are in your own name, so they are yours to pay, not {payer.payer.name}&apos;s.</p>
-            <InvoicesCard invoices={ownOpen} busy={busy} payingId={payingId} results={payResults} onPay={payInvoice} />
-            <PaymentMethodsCard methods={methods} busy={busy} onAdd={add} onSetDefault={setDefault} onRemove={remove} />
-          </>
+        {paysForOthers ? (
+          // Their own account has a signer, but they are someone else's authorized
+          // payer (Wyatt, 2026-11-25): those invoices come here, so all of Billing's
+          // paying side shows, not only what is overdue in their own name.
+          <InvoicesCard invoices={invoices} busy={busy} payingId={payingId} results={payResults} onPay={payInvoice} />
+        ) : (
+          ownOpen.length > 0 && (
+            <>
+              <p className="text-sm text-gray-700">These invoices are in your own name, so they are yours to pay, not {payer.payer.name}&apos;s.</p>
+              <InvoicesCard invoices={ownOpen} busy={busy} payingId={payingId} results={payResults} onPay={payInvoice} />
+            </>
+          )
         )}
+        {/* Asked to pay for another account, even before accepting: the payment method is theirs to add here. */}
+        {(ownOpen.length > 0 || payingFor.length > 0) && <PaymentMethodsCard methods={methods} busy={busy} onAdd={add} onSetDefault={setDefault} onRemove={remove} />}
+        {paysForOthers && <AutopayCard methods={methods} />}
         {contesting && <ContestChargeModal charge={contesting} busy={busy} onCancel={() => setContesting(null)} onSubmit={contest} />}
       </div>
     );
@@ -279,6 +312,7 @@ function PaymentsContent({ viewAsId }) {
           {notice.text}
         </div>
       )}
+      {payingForCard}
       {gate && !gate.billingOnly && <PublishChecklist gate={gate} hasActivePaymentMethod={methods.some((m) => m.status === "active")} />}
       {payees.length > 0 && <SignerChecklist accounts={payees} hasPaymentMethod={!gate?.requirePaymentMethod || methods.some((m) => m.status === "active")} />}
       {gate?.agreement && (
@@ -298,6 +332,8 @@ function PaymentsContent({ viewAsId }) {
           }
         />
       )}
+      {listingCards}
+      {whoCard}
       <PaymentMethodsCard
         methods={methods}
         busy={busy}
@@ -311,6 +347,7 @@ function PaymentsContent({ viewAsId }) {
         busy={busy}
         onApprove={approve}
         onContest={setContesting}
+        billedTo={billedTo}
       />
       <InvoicesCard invoices={invoices} busy={busy} payingId={payingId} results={payResults} onPay={payInvoice} />
       <AutopayCard methods={methods} />

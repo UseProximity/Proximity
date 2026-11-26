@@ -34,6 +34,7 @@ import { NextResponse } from "next/server";
 import supabase from "@/lib/supabase";
 import { getRequestUser } from "@/lib/getRequestUser";
 import { revokeAppleToken } from "@/lib/appleAuth";
+import { endLinksForDeletedAccount } from "@/lib/billing/payerServices";
 
 export async function DELETE(req) {
   try {
@@ -177,6 +178,11 @@ export async function DELETE(req) {
       console.error("[account DELETE] soft-delete failed:", delErr);
       return NextResponse.json({ error: "Failed to delete account" }, { status: 500 });
     }
+
+    // Whoever this account signed or paid for, and whoever signed or paid for it,
+    // is released: a deleted payer must not stay invoiced, or hold up a
+    // landlord's publishing on a payment method only they could add.
+    await endLinksForDeletedAccount(userId);
 
     // Sign in with Apple accounts: Apple requires the user's grant to be revoked
     // when they delete their account. The account is already deleted at this

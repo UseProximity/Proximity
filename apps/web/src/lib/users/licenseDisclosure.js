@@ -206,14 +206,17 @@ async function coveringSigners(db, listingId, landlordIds) {
   if (!listingId || !landlordIds.length) return out;
   const { data: links, error } = await db
     .from("billing_payers")
-    .select("landlord_id, payer_id")
+    .select("landlord_id, payer_id, listing_id")
     .in("landlord_id", landlordIds)
-    .is("listing_id", null)
+    .eq("role", "signer")
     .eq("status", "active");
   if (missingSchema(error)) return out;
   if (error) throw error;
-  if (!links?.length) return out;
-  const payerOf = new Map(links.map((l) => [l.landlord_id, l.payer_id]));
+  // Who signs for this listing: its own signer, else the account's (Wyatt, 2026-11-25).
+  const here = (links ?? []).filter((l) => !l.listing_id || l.listing_id === listingId);
+  if (!here.length) return out;
+  const payerOf = new Map();
+  for (const l of here.sort((a, b) => (a.listing_id ? 1 : 0) - (b.listing_id ? 1 : 0))) payerOf.set(l.landlord_id, l.payer_id);
   const { data: rows, error: covErr } = await db
     .from("agreement_coverage")
     .select("user_id, agreement_id")

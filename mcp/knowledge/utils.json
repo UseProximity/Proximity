@@ -1,7 +1,7 @@
 {
   "_description": "All files in src/lib and src/utils: path + first line of their file header comment.",
-  "_generated": "2026-11-25T20:02:52.278Z",
-  "count": 383,
+  "_generated": "2026-11-26T20:17:42.562Z",
+  "count": 386,
   "utils": [
     {
       "file": "src/lib/admin/adminDb.js",
@@ -404,6 +404,10 @@
       "description": "Versions of the marketing agreement document (agreement_versions). An admin"
     },
     {
+      "file": "src/lib/billing/authorizedPayers.js",
+      "description": "An authorized payer for a landlord account, or for one of its listings (Wyatt,"
+    },
+    {
       "file": "src/lib/billing/autopay.js",
       "description": "Autopay: a landlord may let Proximity charge their monthly invoice to a saved"
     },
@@ -565,7 +569,7 @@
     },
     {
       "file": "src/lib/billing/payerLinks.js",
-      "description": "Who pays for a landlord account (billing_payers, Project B, Wyatt 2026-11-09)."
+      "description": "Who signs and who pays for a landlord account (billing_payers)."
     },
     {
       "file": "src/lib/billing/payers.js",
@@ -626,6 +630,10 @@
     {
       "file": "src/lib/chat/alertRoutes.js",
       "description": "Where a thread's chat alert emails go for one participant, for admin views."
+    },
+    {
+      "file": "src/lib/chat/applicationLinks.js",
+      "description": "Application links in chat (Wyatt, 2026-11-20)."
     },
     {
       "file": "src/lib/chat/attachments.js",
@@ -702,6 +710,10 @@
     {
       "file": "src/lib/chat/replyAddress.js",
       "description": "Private reply addresses for chat alert emails."
+    },
+    {
+      "file": "src/lib/chat/replyNote.js",
+      "description": "Tell the sender of an emailed reply what Proximity took out of it (Wyatt,"
     },
     {
       "file": "src/lib/chat/replySenderApproval.js",

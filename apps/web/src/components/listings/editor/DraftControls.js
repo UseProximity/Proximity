@@ -61,13 +61,15 @@ export function PublishButton({
 
   // The publish itself, also run again once the landlord has signed for the
   // properties their agreement did not cover yet (publishErrorToast's retry).
-  const send = async () => {
+  // `partial`: after the signing popup, when part of a batch went to an authorized
+  // signer: publish what is ready and leave what waits on them as drafts.
+  const send = async ({ partial = false } = {}) => {
     setBusy(true);
     try {
       const res = await fetch("/api/landlord/publish", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ kind, id, ids, scope }),
+        body: JSON.stringify({ kind, id, ids, scope, ...(partial && { partial: true }) }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) return publishErrorToast(data, "Couldn't publish that.", { retry: send });
@@ -78,6 +80,9 @@ export function PublishButton({
           "Published. This building was already on Proximity, so your units and listings joined it. Find them under Live.",
           { duration: 8000 }
         );
+      } else if (data.published?.waiting) {
+        const { published: n, waiting } = data.published;
+        toast.success(`Published ${n} ${n === 1 ? "listing" : "listings"}. ${waiting} ${waiting === 1 ? "is still a draft, waiting" : "are still drafts, waiting"} on ${waiting === 1 ? "its" : "their"} authorized signer.`, { duration: 8000 });
       } else {
         toast.success(typeof successText === "function" ? successText(data.published) : successText);
       }

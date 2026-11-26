@@ -4,6 +4,7 @@ import { NextResponse } from "next/server";
 import { auth } from "@/auth";
 import supabase from "@/lib/supabase";
 import { checkListingGate, gateResponseBody } from "@/lib/billing/listingGate";
+import { resolvePublishedIds } from "@/lib/billing/coverage";
 import { PublishError, draftsAmong, publishAll, publishLease, publishProperties, publishProperty, publishTargets, publishUnit } from "@/lib/listings/publish";
 
 /*
@@ -25,6 +26,9 @@ import { PublishError, draftsAmong, publishAll, publishLease, publishProperties,
  *             workspace's Publish all: one request, so the agreement check
  *             asks for one signature covering all of them. Properties with
  *             no priced offering yet are skipped and stay drafts.
+ *             With `partial: true`, a batch where only some are held back
+ *             (by their agreement or a payment method) publishes the others
+ *             and answers `waiting`, how many stayed drafts.
  *   all       Bulk, from the Drafts page. scope "new" publishes the caller's
  *             draft properties that are complete (a unit with a priced
  *             offering). scope "live" publishes everything the caller has
@@ -70,10 +74,30 @@ export async function POST(req) {
 
   // Publishing needs a payment method and, when required, a signed agreement
   // (lib/billing/listingGate.js). Drafts stay saved; only going live is refused.
-  const gate = await checkListingGate(supabase, userId, { listingIds: await publishTargets(userId, kind, id, scope, ids) });
-  if (!gate.allowed) return NextResponse.json(gateResponseBody(gate), { status: 403 });
+  const targets = await publishTargets(userId, kind, id, scope, ids);
+  const gate = await checkListingGate(supabase, userId, { listingIds: targets });
+  // Several drafts at once, some held back (they wait on their own authorized
+  // signer, say) and some not: with `partial` the ones nothing holds back go
+  // live and the rest stay drafts (Wyatt, 2026-11-25). The page sends it once
+  // the landlord has sent the signers theirs and signed for their own, so that
+  // signature is not left publishing nothing. They pass the gate on their own first.
+  let only = null;
+  if (!gate.allowed && body.partial === true && gate.blocked && (kind === "properties" || (kind === "all" && scope === "new"))) {
+    const blocked = new Set(gate.blocked);
+    const free = [];
+    for (const t of targets) {
+      const [live] = await resolvePublishedIds(supabase, [t]);
+      if (!blocked.has(live ?? t)) free.push(t);
+    }
+    if (free.length && (await checkListingGate(supabase, userId, { listingIds: free })).allowed) only = free;
+  }
+  if (!gate.allowed && !only) return NextResponse.json(gateResponseBody(gate), { status: 403 });
 
   try {
+    if (only) {
+      const result = await publishProperties(userId, isSuper, only);
+      return NextResponse.json({ published: { kind, ...(kind === "all" && { scope }), ...result, waiting: targets.length - only.length } });
+    }
     if (kind === "all") {
       const result = await publishAll(userId, isSuper, scope);
       return NextResponse.json({ published: { kind, scope, ...result } });

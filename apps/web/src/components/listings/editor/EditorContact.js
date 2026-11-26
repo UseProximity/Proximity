@@ -16,6 +16,7 @@ import { useEffect, useState } from "react";
 import toast from "react-hot-toast";
 import ContactEmailStatus from "@/components/listings/editor/ContactEmailStatus";
 import { normalizeApplicationUrl } from "@/lib/listings/applicationLink";
+import { revealGap } from "@/components/listings/editor/ImportGaps";
 
 const field =
   "mt-1 w-full rounded-lg border border-gray-200 px-2.5 py-1.5 text-sm focus:border-red-400 focus:outline-none";
@@ -26,7 +27,7 @@ const field =
  * with an email is the best guess, and the mismatch note below says so.
  */
 function savedContact(listing) {
-  const mine = listing?.myLeases ?? [];
+  const mine = listing?.contactLeases ?? listing?.myLeases ?? [];
   const src = mine.find((l) => l.contactEmail) ?? mine[0];
   // No phone: students write through Proximity, never call (Wyatt, 2026-10-18).
   return {
@@ -37,9 +38,34 @@ function savedContact(listing) {
   };
 }
 
+/*
+ * A landlord with no leases of their own at this property (Wyatt, 2026-11-20).
+ * The application link is stored on their own leases, so there is nothing to
+ * save it on yet. The field still shows, greyed out with the reason, because a
+ * chat that refused their application link sends them here to find it.
+ */
+function ApplicationLinkUnavailable() {
+  return (
+    <div className="rounded-xl bg-white p-4 shadow-sm">
+      <label className="block" aria-disabled="true">
+        <span className="text-[10px] font-medium uppercase tracking-wide text-gray-400">
+          Application link <span className="normal-case tracking-normal text-gray-400">(optional)</span>
+        </span>
+        <input type="url" disabled className={`${field} cursor-not-allowed bg-gray-100 text-gray-400`}
+          placeholder="https://yourportal.com/apply" data-gap="application-link" />
+        <span className="mt-1 block text-[11px] leading-4 text-gray-500">
+          Unavailable because you don&apos;t have any leases of your own at this property. Your
+          application link is saved on your leases, so add a lease here first. Then you can add
+          the link, and students will see an Apply button in the listing&apos;s Contact tab.
+        </span>
+      </label>
+    </div>
+  );
+}
+
 export default function EditorContact({ listing, onChanged }) {
   const listingId = listing?._id || listing?.id;
-  const mine = listing?.myLeases ?? [];
+  const mine = listing?.contactLeases ?? listing?.myLeases ?? [];
   const [draft, setDraft] = useState(() => savedContact(listing));
   const [dirty, setDirty] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -50,7 +76,24 @@ export default function EditorContact({ listing, onChanged }) {
     if (!dirty) setDraft(savedContact(listing));
   }, [listing, dirty]);
 
-  if (!mine.length) return null;
+  /*
+   * Arriving from a chat that refused an application link
+   * (?focus=application-link): scroll to the field and highlight it, once.
+   * The param is dropped so a reload does not do it again.
+   */
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("focus") !== "application-link") return;
+    const timer = setTimeout(() => {
+      revealGap("application-link");
+      params.delete("focus");
+      window.history.replaceState(null, "", `?${params.toString()}${window.location.hash}`);
+    }, 400);
+    return () => clearTimeout(timer);
+  }, []);
+
+  if (!mine.length) return <ApplicationLinkUnavailable />;
 
   const set = (p) => { setDraft((d) => ({ ...d, ...p })); setDirty(true); };
   const discard = () => { setDraft(savedContact(listing)); setDirty(false); };
@@ -132,7 +175,7 @@ export default function EditorContact({ listing, onChanged }) {
           <span className="text-[10px] font-medium uppercase tracking-wide text-gray-400">
             Application link <span className="normal-case tracking-normal text-gray-400">(optional)</span>
           </span>
-          <input type="url" inputMode="url" className={field} value={draft.applicationUrl}
+          <input type="url" inputMode="url" className={field} value={draft.applicationUrl} data-gap="application-link"
             placeholder="https://yourportal.com/apply"
             onChange={(e) => set({ applicationUrl: e.target.value })} />
           <span className="mt-1 block text-[11px] leading-4 text-gray-500">

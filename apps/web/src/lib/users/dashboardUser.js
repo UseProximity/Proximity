@@ -122,10 +122,10 @@ function serializeListing(l, currentUserId = null, coOwnerMap = {}, metricsMap =
    * their own terms rather than the building's aggregate — which, at someone
    * else's property, is mostly other people's prices.
    */
-  const myLeases = currentUserId
+  const leasesWhere = (keep) => currentUserId
     ? sortUnits(visibleUnits).flatMap((u) =>
         (u.unit_leases ?? [])
-          .filter((lease) => lease.owner_id === currentUserId && !lease.deleted_at)
+          .filter((lease) => keep(lease) && !lease.deleted_at)
           .map((lease) => ({
             id: lease.id,
             unitId: u.id,
@@ -162,11 +162,22 @@ function serializeListing(l, currentUserId = null, coOwnerMap = {}, metricsMap =
           }))
       )
     : [];
+  const myLeases = leasesWhere((lease) => lease.owner_id === currentUserId);
+  /*
+   * What the contact block (EditorContact) writes to: their own leases, plus
+   * imported ownerless ones on a property they own, the same rows
+   * showLeaseContact lets them see. Without these an owner whose building was
+   * imported had a greyed-out application field and could never add a link.
+   */
+  const contactLeases = leasesWhere(
+    (lease) => lease.owner_id === currentUserId || (!lease.owner_id && ownsProperty)
+  );
 
   return {
     _id: l.id?.toString(),
     id: l.id,
     myLeases,
+    contactLeases,
     isDraft,
     draftUnitCount,
     draftLeaseCount,

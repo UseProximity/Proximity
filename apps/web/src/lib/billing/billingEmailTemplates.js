@@ -46,11 +46,18 @@ function chargeDetails(charge) {
     .join("")}</table>`;
 }
 
-export function contestSubmittedTeamEmail({ landlordName, landlordEmail, charge, reason, adminUrl }) {
+// `payer`: { name, email } when the account's authorized payer contested it
+// (Wyatt, 2026-11-25), not the landlord. The charge is still on the landlord's account.
+export function contestSubmittedTeamEmail({ landlordName, landlordEmail, charge, reason, adminUrl, payer = null }) {
+  const account = `<strong>${e(landlordName || "A landlord")}</strong> (${e(landlordEmail)})`;
   return {
-    subject: `Charge contested by ${landlordName || landlordEmail}`,
+    subject: `Charge contested by ${payer ? payer.name || payer.email : landlordName || landlordEmail}`,
     html: wrap(`
-      <p><strong>${e(landlordName || "A landlord")}</strong> (${e(landlordEmail)}) contested a charge.</p>
+      ${
+        payer
+          ? `<p><strong>${e(payer.name || "An authorized payer")}</strong> (${e(payer.email)}), the authorized payer billed for it, contested a charge on the account of ${account}.</p>`
+          : `<p>${account} contested a charge.</p>`
+      }
       ${chargeDetails(charge)}
       <p><strong>Their reason:</strong></p>
       <blockquote style="margin:0 0 12px;padding-left:12px;border-left:3px solid #e5e7eb">${e(reason)}</blockquote>
@@ -59,16 +66,23 @@ export function contestSubmittedTeamEmail({ landlordName, landlordEmail, charge,
   };
 }
 
-export function contestOutcomeEmail({ name, outcome, charge, paymentsUrl }) {
+// The outcome goes to the landlord and to the authorized payer billed for it
+// (Wyatt, 2026-11-25), whichever of them contested it.
+// `contestedBy`: the name of whoever contested, when it was not the reader.
+// `invoicedTo`: the name of whoever is invoiced for it, when it is not the reader.
+export function contestOutcomeEmail({ name, outcome, charge, paymentsUrl, contestedBy = null, invoicedTo = null }) {
   const upheld = outcome === "approved";
+  const which = contestedBy ? `the charge ${e(contestedBy)} contested` : "the charge you contested";
+  const invoice = invoicedTo ? `${e(invoicedTo)}'s next monthly invoice` : "your next monthly invoice";
+  const nobodyPays = invoicedTo ? `${e(invoicedTo)} will not be charged for it.` : "You will not be charged for it.";
   return {
-    subject: upheld ? "Update on your contested charge" : "Your contested charge was removed",
+    subject: upheld ? (contestedBy ? "Update on a contested charge" : "Update on your contested charge") : contestedBy ? "A contested charge was removed" : "Your contested charge was removed",
     html: wrap(`
       ${hello(name)}
       ${
         upheld
-          ? "<p>We reviewed the charge you contested and it stands. It is now approved and will be included in your next monthly invoice.</p>"
-          : "<p>We reviewed the charge you contested and removed it. You will not be charged for it.</p>"
+          ? `<p>We reviewed ${which} and it stands. It is now approved and will be included in ${invoice}.</p>`
+          : `<p>We reviewed ${which} and removed it. ${nobodyPays}</p>`
       }
       ${chargeDetails(charge)}
       <p>If you have questions, reply to this email.</p>
@@ -82,13 +96,21 @@ export function contestOutcomeEmail({ name, outcome, charge, paymentsUrl }) {
  * landlord can approve or contest it until `reviewEndsAt`, after which it is
  * approved and goes on the next monthly invoice.
  */
-export function chargeCreatedEmail({ name, charge, reviewEndsAt, paymentsUrl }) {
+// `forAccount`: the copy to an authorized payer (Wyatt, 2026-11-25), who is
+// billed for a charge on that landlord's account and can review it too.
+// `billedTo`: the landlord's copy when someone else is billed for it.
+export function chargeCreatedEmail({ name, charge, reviewEndsAt, paymentsUrl, forAccount = null, billedTo = null }) {
   const basis = basisLabel(charge);
+  const opening = forAccount
+    ? `We added a charge for ${charge.listingLabel ? `${e(forAccount)}'s listing` : `${e(forAccount)}'s account`} on Proximity. You are their authorized payer, so it is billed to you.`
+    : billedTo
+      ? `We added a charge to your Proximity account. It is billed to ${e(billedTo)}, your authorized payer, who can review it too.`
+      : "We added a charge to your Proximity account.";
   return {
     subject: `New Proximity charge to review: ${formatCents(charge.amountCents)}`,
     html: wrap(`
       ${hello(name)}
-      <p>We added a charge to your Proximity account.</p>
+      <p>${opening}</p>
       ${chargeDetails(charge)}
       ${basis ? `<p style="color:#6b7280">${e(basis)}</p>` : ""}
       ${charge.description ? `<p>${e(charge.description)}</p>` : ""}
@@ -459,18 +481,22 @@ export function autopayOffEmail({ name, reason, methodDescription = null, paymen
  * `setupUrl` when the account has no way to sign in yet (a set-password link),
  * else `signUrl` (their Billing page).
  */
-export function payerInviteEmail({ name, landlordName, addresses = [], setupUrl = null, signUrl, existingAgreement = false }) {
+// `listingsOnly`: named for the listings listed, not the whole account (Wyatt, 2026-11-25).
+export function payerInviteEmail({ name, landlordName, addresses = [], setupUrl = null, signUrl, existingAgreement = false, listingsOnly = false }) {
+  const one = addresses.length === 1;
+  const forWhat = listingsOnly ? (one ? "one of their listings" : "some of their listings") : "their account";
+  const theirs = listingsOnly ? (one ? "this property" : "these properties") : "their properties";
   const list = addresses.length
     ? `<ul>${addresses.slice(0, 20).map((a) => `<li>${e(a)}</li>`).join("")}${addresses.length > 20 ? `<li>and ${addresses.length - 20} more</li>` : ""}</ul>`
     : "";
   const ask = existingAgreement
-    ? "add their properties to your Proximity marketing agreement with a short addendum, and to pay Proximity's fees for them"
-    : "sign Proximity's marketing agreement for their properties and to pay Proximity's fees for them";
+    ? `add ${theirs} to your Proximity marketing agreement with a short addendum, and to pay Proximity's fees for ${listingsOnly && one ? "it" : "them"}`
+    : `sign Proximity's marketing agreement for ${theirs} and to pay Proximity's fees for ${listingsOnly && one ? "it" : "them"}`;
   return {
     subject: `${landlordName} asked you to sign for their Proximity listings`,
     html: wrap(`
       ${hello(name)}
-      <p>${e(landlordName)} lists rentals on Proximity, the off-campus housing site for WashU students, and named you as the authorized signer for their account: the person who signs the marketing agreement and pays the invoices. They asked you to ${ask}.</p>
+      <p>${e(landlordName)} lists rentals on Proximity, the off-campus housing site for WashU students, and named you as the authorized signer for ${forWhat}: the person who signs the marketing agreement and pays the invoices. They asked you to ${ask}.</p>
       ${list}
       <p>Two documents are attached: the marketing agreement, and the Missouri Broker Disclosure Form. Please read the disclosure form before you sign.</p>
       ${setupUrl ? button(setupUrl, "Set a password and review") : button(signUrl, "Review and sign")}
@@ -537,13 +563,21 @@ export function payerDocumentCancelledEmail({ name, causeName, accountNames = []
 
 // To an authorized signer a landlord revoked (Wyatt, 2026-11-10). `tookOver`:
 // the landlord signed their own agreement instead.
-export function payerRevokedEmail({ name, landlordName, released = 0, tookOver = false, billingUrl }) {
+// `listingAddress`: they signed for that one listing only, and may still sign
+// for others of the same landlord. `byAdmin`: Proximity ended it, not the landlord.
+export function payerRevokedEmail({ name, landlordName, released = 0, tookOver = false, byAdmin = false, listingAddress = null, billingUrl }) {
   const count = `${released} ${released === 1 ? "property" : "properties"}`;
+  const cause = tookOver
+    ? `${e(landlordName)} signed their own Proximity marketing agreement`
+    : byAdmin
+      ? `Proximity removed you as the authorized signer for ${listingAddress ? `${e(landlordName)}'s listing at ${e(listingAddress)}` : e(landlordName)}`
+      : `${e(landlordName)} removed you as the authorized signer for ${listingAddress ? `their listing at ${e(listingAddress)}` : "their account"} on Proximity`;
+  const effect = listingAddress ? "you no longer sign or pay for that listing. Anything else you sign for them is unchanged" : "you no longer sign or pay for their listings";
   return {
-    subject: `You are no longer the authorized signer for ${landlordName}`,
+    subject: listingAddress ? `You are no longer the authorized signer for ${listingAddress}` : `You are no longer the authorized signer for ${landlordName}`,
     html: wrap(`
       ${hello(name)}
-      <p>${e(landlordName)} ${tookOver ? "signed their own Proximity marketing agreement" : "removed you as their authorized signer on Proximity"}, so you no longer sign or pay for their listings.${released ? ` Their ${count} came off your agreement.` : ""}</p>
+      <p>${cause}, so ${effect}.${released ? ` ${listingAddress ? "It" : `Their ${count}`} came off your agreement.` : ""}</p>
       <p>Your agreement stays in force for everything else on it. Charges raised while their listings were on your agreement stay on your invoices; anything new is billed to them.</p>
       ${button(billingUrl, "Open Billing")}
       <p>Questions? Just reply to this email.</p>
@@ -552,13 +586,115 @@ export function payerRevokedEmail({ name, landlordName, released = 0, tookOver =
 }
 
 // To a landlord whose payer Proximity set up for them (an admin assigned it).
-export function payeeAssignedEmail({ name, payerName, billingUrl }) {
+// `listings`: the addresses, when they sign for those listings only.
+export function payeeAssignedEmail({ name, payerName, listings = [], billingUrl }) {
+  const some = listings.length > 0;
   return {
-    subject: `${payerName} is now the authorized signer for your Proximity listings`,
+    subject: `${payerName} is now the authorized signer for ${some ? (listings.length === 1 ? "one of your Proximity listings" : "some of your Proximity listings") : "your Proximity listings"}`,
     html: wrap(`
       ${hello(name)}
-      <p>${e(payerName)} is now the authorized signer for your account: they sign Proximity's marketing agreement for your listings and receive the invoices. We have emailed them the agreement to sign.</p>
-      <p>You don't need to sign anything. On your Billing page you can see when they have signed, which listings are covered, and each charge.</p>
+      <p>${e(payerName)} is now the authorized signer for ${some ? (listings.length === 1 ? "this listing" : "these listings") : "your account"}: they sign Proximity's marketing agreement for ${some ? (listings.length === 1 ? "it" : "them") : "your listings"} and receive the invoices, unless you name a separate authorized payer. We have emailed them the agreement to sign.</p>
+      ${some ? `<ul>${listings.slice(0, 20).map((a) => `<li>${e(a)}</li>`).join("")}</ul>` : ""}
+      <p>${some ? "Nothing changes for your other listings." : "You don't need to sign anything."} On your Billing page you can see when they have signed, which listings are covered, and each charge.</p>
+      ${button(billingUrl, "Open Billing")}
+      <p>Questions? Just reply to this email.</p>
+    `),
+  };
+}
+
+// ── Authorized payer (Wyatt, 2026-11-25) ─────────────────────────────────────
+
+const forWhat = (landlordName, listingAddress) => (listingAddress ? `${e(landlordName)}'s listing at ${e(listingAddress)}` : `${e(landlordName)}'s listings`);
+
+/*
+ * A landlord named this person as the authorized payer for their account, or for
+ * one listing. Nothing is billed to them until they accept. `setupUrl` when the
+ * account has no way to sign in yet (a set-password link), else `acceptUrl`.
+ */
+export function authorizedPayerInviteEmail({ name, landlordName, listingAddress = null, setupUrl = null, acceptUrl }) {
+  return {
+    subject: `${landlordName} asked you to pay for their Proximity listings`,
+    html: wrap(`
+      ${hello(name)}
+      <p>${e(landlordName)} lists rentals on Proximity, the off-campus housing site for WashU students, and named you as the authorized payer for ${forWhat(landlordName, listingAddress)}: the person who receives and pays Proximity's invoices for ${listingAddress ? "it" : "them"}.</p>
+      <p>Nothing is billed to you unless you accept. If you accept, the charges made from then on are invoiced to you, you add the payment method, and you can review or dispute each charge before it is invoiced. Proximity only charges when a student who found the property on Proximity signs a lease.</p>
+      ${setupUrl ? button(setupUrl, "Set a password and review") : button(acceptUrl, "Review the request")}
+      <p>${setupUrl ? "You'll set a password for your Proximity billing account, then accept or decline on your Billing page. The link works for 14 days." : "Log in to Proximity, then accept or decline on your Billing page."}</p>
+      <p>Not the right person, or have questions? Just reply to this email.</p>
+    `),
+  };
+}
+
+// To the landlord: the person they named accepted, and is billed from now on.
+export function authorizedPayerAcceptedEmail({ name, payerName, listingAddress = null, billingUrl }) {
+  return {
+    subject: `${payerName} accepted: they now pay for ${listingAddress ? "your listing" : "your Proximity listings"}`,
+    html: wrap(`
+      ${hello(name)}
+      <p>${e(payerName)} accepted your request to be the authorized payer for ${listingAddress ? `your listing at ${e(listingAddress)}` : "your account"}. Charges made from now on are invoiced to them. Charges made before today stay with whoever they were billed to.</p>
+      <p>You still see every charge on your Billing page and can dispute one during its review, as they can.</p>
+      ${button(billingUrl, "Open Billing")}
+    `),
+  };
+}
+
+// To the landlord: the person they named declined. Nothing changed.
+export function authorizedPayerDeclinedEmail({ name, payerName, listingAddress = null, billingUrl }) {
+  return {
+    subject: `${payerName} declined to pay for ${listingAddress ? "your listing" : "your Proximity listings"}`,
+    html: wrap(`
+      ${hello(name)}
+      <p>${e(payerName)} declined your request to be the authorized payer for ${listingAddress ? `your listing at ${e(listingAddress)}` : "your account"}. Nothing changed: charges are billed as they were before.</p>
+      <p>You can name someone else on your Billing page.</p>
+      ${button(billingUrl, "Open Billing")}
+    `),
+  };
+}
+
+// To a payer the landlord (or Proximity) removed.
+export function authorizedPayerRemovedEmail({ name, landlordName, listingAddress = null, accepted = true, billingUrl }) {
+  return {
+    subject: `You are no longer the authorized payer for ${landlordName}`,
+    html: wrap(`
+      ${hello(name)}
+      <p>${e(landlordName)} ${accepted ? "removed you as the authorized payer" : "withdrew their request for you to be the authorized payer"} for ${forWhat(landlordName, listingAddress)} on Proximity.</p>
+      ${accepted ? "<p>Nothing new is billed to you for it. Charges made while you were their payer stay on your invoices.</p>" : "<p>Nothing was billed to you.</p>"}
+      ${accepted ? button(billingUrl, "Open Billing") : ""}
+      <p>Questions? Just reply to this email.</p>
+    `),
+  };
+}
+
+// To a landlord whose authorized signer or payer deleted their Proximity account:
+// the arrangement ended with it. `role` "signer" or "payer".
+export function linkHolderGoneEmail({ name, personName, role = "payer", listingAddress = null, billingUrl }) {
+  const what = listingAddress ? `your listing at ${e(listingAddress)}` : "your account";
+  return {
+    subject: `${personName} is no longer your authorized ${role}`,
+    html: wrap(`
+      ${hello(name)}
+      <p>${e(personName)} deleted their Proximity account, so they are no longer the authorized ${role} for ${what}.</p>
+      ${
+        role === "signer"
+          ? `<p>${listingAddress ? "That listing is" : "Your listings are"} no longer covered by their marketing agreement. Anything live stays on the site, but nothing new can be published until you sign the agreement yourself or name someone else.</p>`
+          : "<p>Charges made from now on are billed to whoever signs for the listing, or to you. Charges made before today stay with whoever they were billed to.</p>"
+      }
+      ${button(billingUrl, "Open Billing")}
+      <p>Questions? Just reply to this email.</p>
+    `),
+  };
+}
+
+// To a landlord whose authorized payer Proximity set up for them (an admin named it).
+export function authorizedPayerAssignedEmail({ name, payerName, listings = [], billingUrl }) {
+  const some = listings.length > 0;
+  return {
+    subject: `${payerName} was asked to pay for ${some ? "some of your Proximity listings" : "your Proximity listings"}`,
+    html: wrap(`
+      ${hello(name)}
+      <p>We asked ${e(payerName)} to be the authorized payer for ${some ? (listings.length === 1 ? "this listing" : "these listings") : "your account"}: the person who receives and pays Proximity's invoices.</p>
+      ${some ? `<ul>${listings.slice(0, 20).map((a) => `<li>${e(a)}</li>`).join("")}</ul>` : ""}
+      <p>Nothing changes until they accept. Once they do, charges made from then on are invoiced to them. You can see their status, or remove them, on your Billing page.</p>
       ${button(billingUrl, "Open Billing")}
       <p>Questions? Just reply to this email.</p>
     `),

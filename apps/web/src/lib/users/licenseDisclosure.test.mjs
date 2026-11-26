@@ -113,7 +113,7 @@ function fakeDb(tables) {
 describe("listedByForListing", () => {
   const lic = (user_id, agent_name) => ({ user_id, is_licensee: true, agent_name, company_name: "Co", company_phone: "(314) 555-0100" });
   const base = {
-    billing_payers: [{ landlord_id: "L", payer_id: "S", listing_id: null, status: "active" }],
+    billing_payers: [{ landlord_id: "L", payer_id: "S", listing_id: null, role: "signer", status: "active" }],
     landlord_agreements: [{ id: "A", user_id: "S", status: "signed" }],
     agreement_coverage: [{ user_id: "L", listing_id: "X", agreement_id: "A", status: "covered" }],
     landlord_license_disclosures: [lic("S", "Signer"), lic("L", "Landlord")],
@@ -129,8 +129,23 @@ describe("listedByForListing", () => {
     assert.equal((await listedByForListing(db, "X", ["L"])).get("L").agentName, "Landlord");
   });
   it("uses the landlord once the signer is revoked", async () => {
-    const db = fakeDb({ ...base, billing_payers: [{ landlord_id: "L", payer_id: "S", listing_id: null, status: "ended" }] });
+    const db = fakeDb({ ...base, billing_payers: [{ landlord_id: "L", payer_id: "S", listing_id: null, role: "signer", status: "ended" }] });
     assert.equal((await listedByForListing(db, "X", ["L"])).get("L").agentName, "Landlord");
+  });
+  it("a listing's own signer is the one listed there, not the account's (2026-11-25)", async () => {
+    const db = fakeDb({
+      ...base,
+      billing_payers: [...base.billing_payers, { landlord_id: "L", payer_id: "S2", listing_id: "Z", role: "signer", status: "active" }],
+      landlord_agreements: [...base.landlord_agreements, { id: "B", user_id: "S2", status: "signed" }],
+      agreement_coverage: [...base.agreement_coverage, { user_id: "L", listing_id: "Z", agreement_id: "B", status: "covered" }],
+      landlord_license_disclosures: [...base.landlord_license_disclosures, lic("S2", "Listing signer")],
+    });
+    assert.equal((await listedByForListing(db, "Z", ["L"])).get("L").agentName, "Listing signer");
+    assert.equal((await listedByForListing(db, "X", ["L"])).get("L").agentName, "Signer");
+  });
+  it("an authorized payer is never the one listed (2026-11-25)", async () => {
+    const db = fakeDb({ ...base, billing_payers: [...base.billing_payers, { landlord_id: "L", payer_id: "P", listing_id: "X", role: "payer", status: "active" }] });
+    assert.equal((await listedByForListing(db, "X", ["L"])).get("L").agentName, "Signer");
   });
   it("falls back to the landlord when the signer is not a licensee", async () => {
     const db = fakeDb({ ...base, landlord_license_disclosures: [lic("L", "Landlord")] });

@@ -45,7 +45,13 @@ export function PublishChecklist({ gate, hasActivePaymentMethod }) {
     <section className="rounded-lg border border-gray-100 bg-white px-4 py-4 shadow-sm">
       <p className="text-sm font-semibold text-gray-900">Before you can publish a listing</p>
       <ul className="mt-2 space-y-1.5">
-        {gate.requirePaymentMethod && <Requirement done={hasActivePaymentMethod}>Add an active payment method</Requirement>}
+        {gate.requirePaymentMethod &&
+          (gate.methodWaitsOn ? (
+            // Someone else is invoiced (the authorized payer): their payment method counts, not the landlord's.
+            <Requirement done={false}>{gate.methodWaitsOn} needs to add a payment method: they are invoiced for your listings</Requirement>
+          ) : (
+            <Requirement done={hasActivePaymentMethod || !gate.missing?.includes("payment_method")}>Add an active payment method</Requirement>
+          ))}
         {gate.requireAgreement && (
           <Requirement done={gate.agreement?.status === "signed"}>
             Sign the marketing agreement. New properties are added to it when you publish them.
