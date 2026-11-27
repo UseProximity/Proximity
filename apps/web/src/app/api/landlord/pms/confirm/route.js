@@ -7,6 +7,7 @@ import { isApiProvider, getConnector } from "@/lib/pms/index.js";
 import { ingestPmsProperty } from "@/lib/pms/ingest.js";
 import { matchUnitsToListingUnits } from "@/lib/pms/mapping.js";
 import { syncConnection } from "@/lib/pms/sync.js";
+import { endListingLinks } from "@/lib/billing/payerLinks";
 
 async function requireLandlordOrSuper() {
   const session = await auth();
@@ -94,6 +95,8 @@ async function releaseListing({ listingId, connection, actorId }) {
     p_listing_id: listingId,
     p_listing_updates: updates,
   });
+  // A deleted listing's signer and payer links end with it, as on every other delete path.
+  if (updates.deleted_at) await endListingLinks(supabase, listingId).catch((err) => console.error("[pms/confirm] ending the listing's signer and payer failed:", err?.message));
 }
 
 // Listing ids this property's existing links point at (from earlier confirms).

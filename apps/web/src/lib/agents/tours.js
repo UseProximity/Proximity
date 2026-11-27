@@ -26,8 +26,10 @@ import supabase from "@/lib/supabase";
 import { getBaseUrl } from "@/lib/email";
 import { notifyNewChatMessage } from "@/lib/chat/notifyEmail";
 import { notifyNewChatMessagePush } from "@/lib/chat/notifyPush";
+import { screenApplicationLinks } from "@/lib/chat/sendGuards";
 import { sandboxViewFor } from "./sandbox";
 import { detectTourProposal } from "./tourProposals";
+import { detectListingUpdate } from "@/lib/agents/chatListingUpdates";
 import { postProxyMessage, postMessage, proxyThreadTypeId } from "./threads";
 import { shortDate } from "./sections";
 import {
@@ -222,6 +224,8 @@ export async function sendDirectMessage({ threadId, listingId, senderId, body, m
       notifyNewChatMessage({ threadId, senderId, messageId: msg.id, baseUrl: getBaseUrl(), via }),
       notifyNewChatMessagePush({ threadId, senderId, messageId: msg.id }),
     ]).catch((err) => console.error("[tours] direct chat alert failed:", err?.message ?? err));
+    // A landlord saying the listing changed updates it, as in the app's chat. Never throws.
+    await detectListingUpdate({ threadId, messageId: msg.id, senderId, body });
   };
   // After the response, like the chat routes; outside a request, right away.
   try { after(notify); } catch { await notify(); }
@@ -310,20 +314,25 @@ export async function landlordAct({ tourId, landlordId, action, day = null, time
   if (action === "message") {
     const text = String(body ?? "").trim().slice(0, 4000);
     if (!text) return { error: "Write a message to the student first.", status: 400 };
+    // An application link goes on the listing, not to the student (Wyatt,
+    // 2026-11-20). An emailed reply has had its links cut already (replyEmail.js).
+    const refusal = await screenApplicationLinks({ userId: landlordId, body: text, threadId: t.thread_id ?? null, listingId: t.listing_id, isLandlord: true });
+    if (refusal) return { error: refusal.message, status: 422, code: refusal.code, settingsUrl: refusal.settingsUrl, actionLabel: refusal.actionLabel };
     const threadId = await openDirectThread(t);
-    await sendDirectMessage({ threadId, listingId: t.listing_id, senderId: landlordId, body: text, metadata: { tourId: t.id }, via });
+    const sent = await sendDirectMessage({ threadId, listingId: t.listing_id, senderId: landlordId, body: text, metadata: { tourId: t.id }, via });
+    const messageId = sent?.id ?? null;
     // Already talking (or confirmed): the message is all; the student heard the rest the first time.
     const first = !["messaging", "confirmed"].includes(t.status);
     const { data: updated, error } = await supabase.from("tour_requests").update({ status: first ? "messaging" : t.status, thread_id: threadId, last_activity_at: now }).eq("id", t.id).select(TOUR_SELECT).single();
     if (error) throw fail("tour message", error);
-    if (!first) return { tour: shape(updated, "landlord"), threadId };
+    if (!first) return { tour: shape(updated, "landlord"), threadId, messageId };
     if (t.proxy_thread_id) {
       await postProxyMessage({ threadId: t.proxy_thread_id, listingId: t.listing_id, type: "proxy_note",
         body: "The landlord messaged you directly about your tour. You can reply to them there.",
         metadata: { tourId: t.id, messaging: true, link: { href: chatLink(threadId), label: "Open the chat with the landlord" } } });
     }
     await notifyTourProposed({ tourId: t.id }).catch((err) => console.error("[tours] message alert failed:", err?.message ?? err));
-    return { tour: shape(updated, "landlord"), threadId };
+    return { tour: shape(updated, "landlord"), threadId, messageId };
   }
   if (action === "cancel") {
     const { data: updated, error } = await supabase.from("tour_requests").update({ status: "cancelled", cancelled_by: landlordId, last_activity_at: now })

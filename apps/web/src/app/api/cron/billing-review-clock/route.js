@@ -5,6 +5,7 @@ import supabase from "@/lib/supabase";
 import { runReviewClock } from "@/lib/billing/reviewClock";
 import { finishStaleTakeovers, settleStalePayerDocuments } from "@/lib/billing/payerServices";
 import { agreementServices } from "@/lib/billing/agreementServices";
+import { endLinksOnDeletedListings } from "@/lib/billing/payerLinks";
 
 /*
  * Daily cron: approve every Pending charge whose 7 day review has ended. The
@@ -15,7 +16,8 @@ import { agreementServices } from "@/lib/billing/agreementServices";
  * finished (listings still waiting on a signed document) is settled now, and the
  * landlord emailed what was approved or declined. A landlord who signed their own
  * agreement to take over from their signer, but whose signer is still linked
- * (the follow-up after signing failed), has the takeover finished now.
+ * (the follow-up after signing failed), has the takeover finished now. A signer
+ * or payer link left active on a deleted listing is ended.
  *
  * Security: CRON_SECRET bearer token, same as the other cron routes.
  *
@@ -42,7 +44,13 @@ export async function GET(req) {
     } catch (err) {
       console.error("billing: finishing takeovers failed", err?.message);
     }
-    return NextResponse.json({ ok: true, ...result, payerDocuments, takeovers });
+    let endedListingLinks = null;
+    try {
+      endedListingLinks = await endLinksOnDeletedListings(supabase);
+    } catch (err) {
+      console.error("billing: ending links on deleted listings failed", err?.message);
+    }
+    return NextResponse.json({ ok: true, ...result, payerDocuments, takeovers, endedListingLinks });
   } catch (err) {
     console.error("billing review clock failed", err);
     return NextResponse.json({ error: "Review clock failed" }, { status: 500 });

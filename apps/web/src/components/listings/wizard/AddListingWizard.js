@@ -1841,8 +1841,9 @@ export default function AddListingWizard({
     // A new property the agreement does not cover yet: sign for it now and it is
     // published; close the popup and it stays a draft (review of 2026-11-07).
     if (result.agreementNeeded) {
-      const live = await signThenPublish(result.agreementNeeded);
-      if (!live) toast("Saved as a draft. Sign your agreement on the Billing page to publish it.", { duration: 8000 });
+      const { live, waiting } = await signThenPublish(result.agreementNeeded);
+      // Waiting on its authorized signer: signThenPublish already said so.
+      if (!live && !waiting) toast("Saved as a draft. Sign your agreement on the Billing page to publish it.", { duration: 8000 });
       result = { ...result, asDraft: !live };
     }
     // Multi-property import: load the next queued property instead of leaving.

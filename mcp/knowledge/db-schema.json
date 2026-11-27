@@ -1856,7 +1856,7 @@
       {
         "table": "listing_source_events",
         "status": "unreleased",
-        "description": "Listing source monitor (feat/agents-importer): a detected difference between a landlord website or portal and our data (kind rent_change|unit_delisted|unit_relisted|availability_change|listing_gone|rent_divergence|missing_unit|availability_divergence|spec_mismatch), with an admin verdict. Zero rows. Migration 202610190001_listing_source_tables.sql (idempotent CREATE, added 2026-10-26 on feat/agents-importer) now defines it in the repo. Kind check widened by 202610200001 and one-open-event-per-change unique index by 202610240003. Service role only.",
+        "description": "Listing source monitor (feat/agents-importer): a detected difference between a landlord website or portal and our data (kind rent_change|unit_delisted|unit_relisted|availability_change|listing_gone|rent_divergence|missing_unit|availability_divergence|spec_mismatch), with an admin verdict. Zero rows. Migration 202610190001_listing_source_tables.sql (idempotent CREATE, added 2026-10-26 on feat/agents-importer) now defines it in the repo. Kind check widened by 202610200001 and one-open-event-per-change unique index by 202610240003. Service role only. Listing changes read from a landlord's message to a student (lib/agents/chatListingUpdates.js, PR 484, migration 202611260001_source_events_from_chat.sql) are rows too: monitor_id NULL (now nullable) and detail.source 'chat', with detail.messageId, threadId, leaseId, quote and undo; unique index listing_source_events_chat_once on (detail->>'messageId', detail->>'leaseId', field) for those rows.",
         "columns": [
           "id:uuid",
           "monitor_id:uuid",
@@ -1881,6 +1881,20 @@
           "prod_rows": 0,
           "prod_last_write": null
         }
+      },
+      {
+        "table": "chat_listing_reads",
+        "status": "unreleased",
+        "description": "What the listing-update reader (lib/agents/chatListingUpdates.js, PR 484, migration 202611260002_chat_listing_reads.sql) decided about each landlord chat message: one row per message, claimed (inserted) before the read so a message is read once; record jsonb = { mode, at, about, quote, reason, bar, skipped, changes[] }. Admins only (Admin > Conversations): kept off chat_messages.metadata because rpc_get_chat_messages sends metadata to both people in the chat. Same migration adds cause 'student_chat' to listing_fact_events_cause_check.",
+        "columns": [
+          "message_id:uuid",
+          "thread_id:uuid",
+          "listing_id:uuid",
+          "record:jsonb",
+          "created_at:timestamptz",
+          "updated_at:timestamptz"
+        ],
+        "notes": "pk message_id; fk message_id->chat_messages.id (cascade), thread_id->chat_threads.id (cascade); rls: on, no policies, revoked from anon/authenticated (service role only)"
       },
       {
         "table": "listing_source_monitors",
@@ -2988,6 +3002,94 @@
         "notes": "status=active; pk id; unique (listing_id, kind, source_key); fk listing_id->listings.id (cascade), unit_id->listing_units.id (cascade), lease_id->unit_leases.id (cascade); check kind in (synced,unit_alias,rent_basis); rls: service role only (no policies), anon/authenticated revoked; migration 202611110001 (dev applied 2026-11-11, prod pending)"
       },
       {
+        "table": "listing_sync_scores",
+        "status": "unreleased",
+        "description": "Shadow scores of the sync confidence ledger (feat/sync-ledger, stage 1, migration 202611240002_listing_sync_scores.sql). Every change a daily sync plans (policy runs only) is scored the ledger's way (lib/sourceImport/score.js via shadow.js shadowRows) and saved next to what today's rules did with it (policy_apply/policy_reason vs ledger_apply/ledger_reason). One run_id per sync run; reads_in_row counts the latest runs in a row that planned the same change_key (kind|unit_key|lease|field|new value). Changes no listing data. Read by the admin borderline list and accuracy-by-platform reports (to come). Written by lib/sourceImport/shadowStore.js saveShadowScores (off with SYNC_SHADOW_SCORES=false).",
+        "columns": [
+          "id:uuid",
+          "run_id:uuid",
+          "run_at:timestamptz",
+          "listing_id:uuid",
+          "monitor_id:uuid",
+          "change_key:text",
+          "kind:text",
+          "unit_key:text",
+          "unit_id:uuid",
+          "lease_id:uuid",
+          "field:text",
+          "action:text",
+          "old_value:jsonb",
+          "new_value:jsonb",
+          "source:text",
+          "platform:text",
+          "trust:numeric",
+          "read_quality:numeric",
+          "right_thing:numeric",
+          "freshness:numeric",
+          "score:numeric",
+          "current_score:numeric",
+          "need:numeric",
+          "bar:numeric",
+          "reads_in_row:int",
+          "ledger_apply:bool",
+          "ledger_hidden:bool",
+          "ledger_reason:text",
+          "borderline:bool",
+          "policy_apply:bool",
+          "policy_reason:text",
+          "landlord_edited:bool",
+          "jev:jsonb",
+          "created_at:timestamptz"
+        ],
+        "notes": "status=unreleased; fk listing_id->listings.id (cascade); monitor_id->listing_source_monitors.id (set null); indexes (listing_id, run_at desc), (run_at desc), partial (run_at desc) where borderline; rls on, no policies, revoked from anon and authenticated: service role only"
+      },
+      {
+        "table": "source_recipes",
+        "status": "unreleased",
+        "description": "Listing recipes (feat/sync-ledger, migration 202611240003_source_recipes.sql): how code reads a site's units with no model (lib/sourceImport/recipe.js). recipe jsonb = { v, kind: named|layout|none, pages, paths (platform scope), after: [line shapes], names }. One active row per listing (scope listing) and one per platform_key (scope platform, shared by every building on that platform); a replaced recipe is retired, never deleted, so versions can be compared. kind none marks a site code cannot read: the daily sync leaves it for the weekly read. Written by lib/sourceImport/recipeStore.js (saveMadeRecipe, noteRecipeRun); read by loadRecipes from sync.js, jobs.js and compare.js. Off with SYNC_RECIPES=false.",
+        "columns": [
+          "id:uuid",
+          "scope:text",
+          "listing_id:uuid",
+          "platform_key:text",
+          "version:int",
+          "recipe:jsonb",
+          "status:text",
+          "made_from:text",
+          "checked:jsonb",
+          "uses:int",
+          "failures:int",
+          "last_ok_at:timestamptz",
+          "created_at:timestamptz",
+          "retired_at:timestamptz"
+        ],
+        "notes": "status=unreleased; fk listing_id->listings.id (cascade); check scope in (listing, platform) with its target set; unique active per listing_id and per platform_key (partial indexes); rls on, no policies, revoked from anon and authenticated: service role only"
+      },
+      {
+        "table": "sync_fix_items",
+        "status": "unreleased",
+        "description": "Fix items from the rare Claude checker (feat/sync-ledger, migration 202611240004_sync_fix_items.sql; lib/sourceImport/checker.js). A page-read sync change stuck within 0.15 of what it needs for three reads in a row is put to Sonnet once (SYNC_CHECKER=true and SYNC_LEDGER_DECIDES=true; 25 a day). Its verdict settles the change and the row says what code should have caught (suggested_fix). Listed on the admin Agents page, Sync decisions tab, until marked built (status done) or dismissed.",
+        "columns": [
+          "id:uuid",
+          "listing_id:uuid",
+          "change_key:text",
+          "kind:text",
+          "change:jsonb",
+          "evidence:text",
+          "score:numeric",
+          "need:numeric",
+          "verdict:text",
+          "reason:text",
+          "suggested_fix:text",
+          "model:text",
+          "cost_usd:numeric",
+          "status:text",
+          "created_at:timestamptz",
+          "closed_at:timestamptz"
+        ],
+        "notes": "status=unreleased; fk listing_id->listings.id (cascade); unique (listing_id, change_key); verdict in (apply, leave); status in (open, done, dismissed); rls on, no policies, revoked from anon and authenticated: service role only"
+      },
+      {
         "table": "listing_sources",
         "status": "unreleased",
         "description": "Where a listing's facts come from: site_data (the listing's own rows on Proximity, one per listing), page (a URL the agent reads; carries the sync schedule and backoff), document (an upload), landlord_statement, landlord_answer (message_id or question_id), pms, admin (hand curation; label = the last_verified_source note), chat_backfill. owner_id scopes a source to one owner's offer. Service role only. Page sources are written by lib/agents/pages.js on every sync (last_fingerprint = hash of the page text, so unchanged pages are not re-synthesized); last_status 'stale' after 3 failures in a row hides the source's facts from Proxy.",
@@ -3315,7 +3417,7 @@
           "license_prefill:jsonb",
           "signer_id:uuid"
         ],
-        "notes": "status=unreleased (dev only until billing ships; 202611050001); pk id; fk user_id->users, agreement_id->landlord_agreements, version_id->agreement_versions (restrict); check status in (sent,signed,voided); one sent per user (uq_agreement_amendments_pending); unique provider_envelope_id; rls on, service role only"
+        "notes": "status=unreleased (dev only until billing ships; 202611050001); pk id; fk user_id->users, agreement_id->landlord_agreements, version_id->agreement_versions (restrict); check status in (sent,signed,voided); one sent per account per signer: unique (user_id, coalesce(signer_id, user_id)) where status=sent (uq_agreement_amendments_pending, 202611250001), so an account can have an addendum open with each of its signers and one of its own; unique provider_envelope_id; rls on, service role only"
       },
       {
         "table": "agreement_coverage",
@@ -3517,15 +3619,17 @@
       {
         "table": "billing_payers",
         "status": "unreleased",
-        "description": "Project B (202611090001): who signs the marketing agreement and pays for a landlord account. One active row per account (listing_id NULL; per-building payers are Project C). The payer holds one master agreement; the account adds properties by addenda the payer signs. declined_at: the payer declined the last document. RLS on, service role only.",
+        "description": "Who signs and who pays for a landlord account (202611090001, 202611250001). role signer: signs the marketing agreement (holds one master; the account adds properties by addenda they sign). role payer: is invoiced, only once accepted_at is set. listing_id NULL is the whole account, else that one listing of the landlord. Who signs for a listing: its own signer, else the account's, else the landlord. Who is invoiced: its own accepted payer, else the account's, else whoever signs, else the landlord (lib/billing/payerLinks.js billedTo). payer_id is the person named whatever the role. One active row per landlord per listing per role (uq_billing_payers_active). declined_at: a signer declined the last document. Not on prod until 202611250001 is applied there. RLS on, service role only.",
         "columns": [
           "id:uuid",
           "landlord_id:uuid",
           "payer_id:uuid",
           "listing_id:uuid",
+          "role:text",
           "signer_name:text",
           "signer_email:text",
           "status:text",
+          "accepted_at:timestamptz",
           "ended_reason:text",
           "ended_at:timestamptz",
           "created_by:uuid",

@@ -8,11 +8,12 @@ import { mintPasswordSetupUrl } from "@/lib/auth/passwordReset";
 import { getMrecForm, MREC_FORM_FILENAME } from "@/lib/users/mrecForm";
 import { readAgreementFile } from "./agreementFiles.js";
 import { getLiveVersion } from "./agreementVersions.js";
-import { agreementState } from "./agreements.js";
-import { displayAddress, loadLandlordProperties } from "./coverage.js";
+import { agreementState, coverageFor } from "./agreements.js";
+import { rebillChargesOf } from "./charges.js";
+import { displayAddress } from "./coverage.js";
 import { approvedDrafts, approveWaiting, canSignIn, completeTakeover, settleSignedDocument, settleStaleDocuments, signerNeedsPaymentMethod, staleTakeoverLandlords } from "./payers.js";
-import { activePayerLink } from "./payerLinks.js";
-import { sendPayeeAssignedEmail, sendPayeeSignedEmail, sendPayerDocumentCancelledEmail, sendPayerInviteEmail, sendPayerRequestEmail, sendPayerRevokedEmail } from "./billingEmails.js";
+import { activePayerLink, allLinks, billedTo, billingLinksFor, endLinksOfUser, signerLinksFor } from "./payerLinks.js";
+import { sendAuthorizedPayerAcceptedEmail, sendAuthorizedPayerAssignedEmail, sendAuthorizedPayerDeclinedEmail, sendAuthorizedPayerInviteEmail, sendAuthorizedPayerRemovedEmail, sendChargeCreatedEmail, sendLinkHolderGoneEmail, sendPayeeAssignedEmail, sendPayeeSignedEmail, sendPayerDocumentCancelledEmail, sendPayerInviteEmail, sendPayerRequestEmail, sendPayerRevokedEmail } from "./billingEmails.js";
 
 const BILLING_PATH = "/dashboard/landlord?tab=billing#marketing-agreement";
 
@@ -55,14 +56,19 @@ async function invitePdfs(payerId) {
 export async function sendPayerInvite({ landlordId = null, landlordIds = null, payerId }) {
   const ids = [...new Set([...(landlordIds ?? []), landlordId].filter(Boolean))];
   const payer = await userRow(payerId);
-  const links = (await Promise.all(ids.map((id) => activePayerLink(supabase, id)))).filter((l) => l?.payer_id === payerId);
+  // Every link this signer has on these accounts: the whole account, or some of its listings.
+  const links = (await Promise.all(ids.map((id) => signerLinksFor(supabase, id)))).flatMap((ls) => allLinks(ls).filter((l) => l.payer_id === payerId));
   if (!payer?.email || !links.length) return false;
-  const landlords = await Promise.all(links.map((l) => userRow(l.landlord_id)));
-  const state = await agreementState(supabase, links[0].landlord_id);
+  const accountIds = [...new Set(links.map((l) => l.landlord_id))];
+  const landlords = await Promise.all(accountIds.map((id) => userRow(id)));
+  const state = await agreementState(supabase, accountIds[0], new Date(), { holderId: payerId });
   const addresses = [];
-  for (const l of links) {
-    const properties = await loadLandlordProperties(supabase, l.landlord_id);
-    addresses.push(...properties.filter((p) => p.live).map((p) => p.address));
+  for (const id of accountIds) {
+    // Only what this signer holds there: live listings of an account they sign
+    // all of, and each listing named for them whether live or not.
+    const { properties } = await coverageFor(supabase, id, new Date(), { holderId: payerId });
+    const named = new Set(links.filter((l) => l.landlord_id === id && l.listing_id).map((l) => l.listing_id));
+    addresses.push(...properties.filter((p) => p.live || named.has(p.listingId)).map((p) => p.address));
   }
   const names = landlords.map(landlordLabel);
   const landlordName = names.length === 1 ? names[0] : `${names.slice(0, -1).join(", ")} and ${names.at(-1)}`;
@@ -74,7 +80,8 @@ export async function sendPayerInvite({ landlordId = null, landlordIds = null, p
   }
   const sent = await sendPayerInviteEmail(
     { id: payer.id, email: payer.email, name: links[0].signer_name || payer.name },
-    { landlordName, addresses, setupUrl, signUrl, existingAgreement: state.valid },
+    // Named for some listings only (never the whole account): worded for those.
+    { landlordName, addresses, setupUrl, signUrl, existingAgreement: state.valid, listingsOnly: links.every((l) => l.listing_id) },
     await invitePdfs(payerId)
   );
   if (sent) await supabase.from("billing_payers").update({ invited_at: new Date().toISOString() }).in("id", links.map((l) => l.id));
@@ -82,15 +89,24 @@ export async function sendPayerInvite({ landlordId = null, landlordIds = null, p
 }
 
 // To each landlord an admin assigned a payer to: who signs and pays now.
-export async function sendPayerAssigned({ landlordId, payerName }) {
+// `listingIds`: when they sign for those listings only.
+export async function sendPayerAssigned({ landlordId, payerName, listingIds = [] }) {
   const landlord = await userRow(landlordId);
   if (!landlord?.email) return false;
-  return sendPayeeAssignedEmail(landlord, { payerName, billingUrl: `${getBaseUrl()}/dashboard/landlord?tab=billing` });
+  return sendPayeeAssignedEmail(landlord, { payerName, listings: await addressesFor(listingIds), billingUrl: `${getBaseUrl()}/dashboard/landlord?tab=billing` });
+}
+
+async function addressesFor(listingIds) {
+  const ids = [...new Set((listingIds ?? []).filter(Boolean))];
+  if (!ids.length) return [];
+  const { data } = await supabase.from("listings").select("address, city, state, zipcode").in("id", ids);
+  return (data ?? []).map(displayAddress);
 }
 
 // More listings now wait for the payer: one email per send (Wyatt, 2026-11-09).
-export async function sendPayerRequest({ landlordId, addresses }) {
-  const link = await activePayerLink(supabase, landlordId);
+// `link`: the signer to email (a listing's own signer); default the account's.
+export async function sendPayerRequest({ landlordId, addresses, link: given = null }) {
+  const link = given ?? (await activePayerLink(supabase, landlordId));
   if (!link) return false;
   const [landlord, payer] = await Promise.all([userRow(landlordId), userRow(link.payer_id)]);
   if (!payer?.email) return false;
@@ -101,12 +117,16 @@ export async function sendPayerRequest({ landlordId, addresses }) {
 }
 
 // To the landlord: what their signer approved (ready to publish) and declined.
-async function notifyApproved(landlordId, { approved = [], declined = [], withdrawn = [] }) {
+// `signerId`: the signer who signed (an account can have several, one per listing).
+async function notifyApproved(landlordId, { approved = [], declined = [], withdrawn = [] }, { signerId = null } = {}) {
   const landlord = await userRow(landlordId);
   if (!landlord?.email) return;
-  const link = await activePayerLink(supabase, landlordId);
+  const links = await billingLinksFor(supabase, landlordId);
+  const link = (signerId ? allLinks(links.signers).find((l) => l.payer_id === signerId) : null) ?? links.signers.account ?? allLinks(links.signers)[0] ?? null;
   const payerName = link?.signer_name ?? "Your authorized signer";
-  const waitingOnPayment = link ? await signerNeedsPaymentMethod(supabase, link.payer_id) : false;
+  // Held back by a payment method: of whoever is invoiced for what this signer holds.
+  const billed = link ? billedTo({ landlordId, listingId: link.listing_id ?? null, ...links }) : null;
+  const waitingOnPayment = billed ? await signerNeedsPaymentMethod(supabase, billed.userId) : false;
   await sendPayeeSignedEmail(landlord, { payerName, approved, declined, withdrawn, waitingOnPayment, billingUrl: `${getBaseUrl()}/dashboard/landlord?tab=billing` });
 }
 
@@ -135,7 +155,7 @@ export async function afterPayerSigned({ signerId, kind, documentId, accounts = 
       gone = (data ?? []).map((r) => r.listings?.address).filter(Boolean);
     }
     if (!accounts[landlordId] && !approved.length && !declined.length && !gone.length) continue;
-    await notifyApproved(landlordId, { approved, declined, withdrawn: gone }).catch((err) => console.error("billing: signed email failed", err?.message));
+    await notifyApproved(landlordId, { approved, declined, withdrawn: gone }, { signerId }).catch((err) => console.error("billing: signed email failed", err?.message));
   }
 }
 
@@ -146,8 +166,9 @@ export async function settleStalePayerDocuments() {
 
 // After a payer adds a payment method: each account's approved drafts can now be published.
 export async function afterPayerMethodAdded(payerId) {
+  // Every account they sign or pay for: a missing method of either holds listings back.
   const { data } = await supabase.from("billing_payers").select("landlord_id").eq("payer_id", payerId).eq("status", "active");
-  for (const r of data ?? []) {
+  for (const r of new Map((data ?? []).map((x) => [x.landlord_id, x])).values()) {
     try {
       await approveWaiting(supabase, { landlordId: r.landlord_id });
       const ready = await approvedDrafts(supabase, r.landlord_id);
@@ -175,14 +196,15 @@ export async function sendPayerDocumentCancelled({ payerId, otherAccounts = [], 
  * endPayerFor answered. When a document they were signing for other accounts too
  * was cancelled with it, that one email says both.
  */
-export async function sendPayerRevoked({ landlordId, ended, tookOver = false }) {
+// `byAdmin`: Proximity ended it, not the landlord. A link for one listing says which.
+export async function sendPayerRevoked({ landlordId, ended, tookOver = false, byAdmin = false }) {
   if (!ended?.link) return false;
   if (ended.cancelled) return sendPayerDocumentCancelled({ ...ended.cancelled, causeLandlordId: landlordId, reason: "ended" });
   const [landlord, payer] = await Promise.all([userRow(landlordId), userRow(ended.link.payer_id)]);
   if (!payer?.email) return false;
   return sendPayerRevokedEmail(
     { id: payer.id, email: payer.email, name: ended.link.signer_name || payer.name },
-    { landlordName: landlordLabel(landlord), released: ended.released ?? 0, tookOver, billingUrl: `${getBaseUrl()}${BILLING_PATH}` }
+    { landlordName: landlordLabel(landlord), released: ended.released ?? 0, tookOver, byAdmin, listingAddress: await listingAddress(ended.link.listing_id), billingUrl: `${getBaseUrl()}${BILLING_PATH}` }
   );
 }
 
@@ -211,4 +233,126 @@ export async function finishStaleTakeovers(documenso) {
     }
   }
   return { finished };
+}
+
+// ── Authorized payer (Wyatt, 2026-11-25) ─────────────────────────────────────
+
+const PAYER_PATH = "/dashboard/landlord?tab=billing#paying-for";
+const billingUrl = () => `${getBaseUrl()}/dashboard/landlord?tab=billing`;
+
+async function listingAddress(listingId) {
+  return listingId ? (await addressesFor([listingId]))[0] ?? null : null;
+}
+
+/*
+ * Email the person a landlord named as authorized payer: who asked, for what,
+ * and a way in to accept or decline. An account that can't sign in yet gets a
+ * set-password link that lands on Billing. `link` is the billing_payers row.
+ */
+export async function sendAuthorizedPayerInvite({ link }) {
+  const [landlord, payer] = await Promise.all([userRow(link.landlord_id), userRow(link.payer_id)]);
+  if (!payer?.email) return false;
+  let setupUrl = null;
+  if (!canSignIn(payer)) {
+    const base = await mintPasswordSetupUrl(payer.id);
+    setupUrl = base ? `${base}&next=${encodeURIComponent(PAYER_PATH)}` : null;
+  }
+  return sendAuthorizedPayerInviteEmail(
+    { id: payer.id, email: payer.email, name: link.signer_name || payer.name },
+    { landlordName: landlordLabel(landlord), listingAddress: await listingAddress(link.listing_id), setupUrl, acceptUrl: `${getBaseUrl()}${PAYER_PATH}` }
+  );
+}
+
+// To the landlord: the person they named accepted (`accepted`) or declined.
+export async function sendAuthorizedPayerAnswer({ link, accepted }) {
+  const landlord = await userRow(link.landlord_id);
+  if (!landlord?.email) return false;
+  const input = { payerName: link.signer_name, listingAddress: await listingAddress(link.listing_id), billingUrl: billingUrl() };
+  return accepted ? sendAuthorizedPayerAcceptedEmail(landlord, input) : sendAuthorizedPayerDeclinedEmail(landlord, input);
+}
+
+// To a payer who was removed (or whose invite was withdrawn before they accepted).
+export async function sendAuthorizedPayerRemoved({ link }) {
+  const [landlord, payer] = await Promise.all([userRow(link.landlord_id), userRow(link.payer_id)]);
+  if (!payer?.email) return false;
+  return sendAuthorizedPayerRemovedEmail(
+    { id: payer.id, email: payer.email, name: link.signer_name || payer.name },
+    { landlordName: landlordLabel(landlord), listingAddress: await listingAddress(link.listing_id), accepted: !!link.accepted_at, billingUrl: billingUrl() }
+  );
+}
+
+// To a landlord an admin named an authorized payer for.
+export async function sendAuthorizedPayerAssigned({ landlordId, payerName, listingIds = [] }) {
+  const landlord = await userRow(landlordId);
+  if (!landlord?.email) return false;
+  return sendAuthorizedPayerAssignedEmail(landlord, { payerName, listings: await addressesFor(listingIds), billingUrl: billingUrl() });
+}
+
+/*
+ * A new charge to review goes to the landlord AND, when an authorized payer is
+ * billed for it, to that payer (Wyatt, 2026-11-25): either can approve or dispute
+ * it. `view` is the admin charge view (with .landlord), `payerId` charges.payer_id.
+ * Returns whether the landlord's copy was handed to the mailer.
+ */
+export async function sendChargeCreatedToAll({ view, payerId = null }) {
+  const input = { charge: view, reviewEndsAt: view.reviewEndsAt, paymentsUrl: billingUrl() };
+  let payer = null;
+  let payerLink = null;
+  if (payerId && payerId !== view.landlord.id) {
+    const { payers } = await billingLinksFor(supabase, view.landlord.id);
+    payerLink = allLinks(payers).find((l) => l.payer_id === payerId) ?? null;
+    if (payerLink) payer = await userRow(payerId);
+  }
+  let emailed = false;
+  if (view.landlord.email) {
+    emailed = await sendChargeCreatedEmail({ id: view.landlord.id, email: view.landlord.email, name: view.landlord.name }, { ...input, billedTo: payerLink?.signer_name ?? null });
+  }
+  if (payer?.email) {
+    await sendChargeCreatedEmail(
+      { id: payer.id, email: payer.email, name: payerLink.signer_name || payer.name },
+      { ...input, forAccount: landlordLabel(await userRow(view.landlord.id)).replace(/^A landlord$/, "a landlord") }
+    ).catch((err) => console.error("billing: new charge email to the payer failed", err?.message));
+  }
+  return emailed;
+}
+
+/*
+ * An account was deleted (DELETE /api/account): every signer or payer link it is
+ * part of ends, and the other side of each is told. Someone it signed or paid
+ * for hears that the arrangement ended; someone who signed or paid for IT hears
+ * they no longer do. Best effort: the account is already deleted, so nothing
+ * here may throw.
+ */
+export async function endLinksForDeletedAccount(userId) {
+  let ended = [];
+  try {
+    ended = await endLinksOfUser(supabase, userId);
+  } catch (err) {
+    console.error("billing: ending the links of a deleted account failed", err?.message);
+    return 0;
+  }
+  // Charges billed to them and not invoiced yet go to whoever is next in line,
+  // so no invoice is ever built for a deleted account (PR 486 review).
+  try {
+    await rebillChargesOf(supabase, userId);
+  } catch (err) {
+    console.error("billing: moving a deleted account's charges failed", err?.message);
+  }
+  for (const link of ended) {
+    try {
+      if (link.payer_id === userId) {
+        const landlord = await userRow(link.landlord_id);
+        if (landlord?.email) {
+          await sendLinkHolderGoneEmail(landlord, { personName: link.signer_name || "Your authorized " + link.role, role: link.role === "payer" ? "payer" : "signer", listingAddress: await listingAddress(link.listing_id), billingUrl: billingUrl() });
+        }
+      } else if (link.role === "payer") {
+        await sendAuthorizedPayerRemoved({ link });
+      } else {
+        await sendPayerRevoked({ landlordId: link.landlord_id, ended: { link, released: 0 } });
+      }
+    } catch (err) {
+      console.error("billing: email after a deleted account's link ended failed", err?.message);
+    }
+  }
+  return ended.length;
 }

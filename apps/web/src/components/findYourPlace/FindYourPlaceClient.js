@@ -15,6 +15,11 @@ import {
   LEASE_OPTIONS,
   GROUP_OPTIONS,
   BIG_GROUP_MIN,
+  NO_MAX,
+  budgetAmount,
+  budgetRangeLabel,
+  COMMUTE_MODES,
+  slowestMode,
   answeredCount,
   sanitizeAnswers,
   standingChips,
@@ -28,7 +33,7 @@ const STORAGE_KEY = "prx_fyp_v1";
 // this browser is asked first.
 const CLAIM_KEY = "prx_fyp_claim";
 const CLAIM_WINDOW_MS = 60 * 60 * 1000;
-const EMPTY_ANSWERS = { group: null, budget: null, lease: null, moveIn: null, modes: [], commuteMax: null };
+const EMPTY_ANSWERS = { group: null, budget: null, budgetMin: null, lease: null, moveIn: null, modes: [], commuteMax: null };
 const SOURCE = "matchmaking";
 
 // Each page by name, as the analytics page reports where people stop. Page 3
@@ -156,8 +161,13 @@ export default function FindYourPlaceClient() {
   // Bumped by Start over so page 1 remounts with its "Other" fields closed.
   const [round, setRound] = useState(0);
   const mainRef = useRef(null);
-  // Arrived with the group already picked in the homepage popup.
+  // Arrived with answers already given on the homepage: the group picked in
+  // the popup, or whatever the hero bar collected (group, budget, commute modes).
   const fromPopupRef = useRef(false);
+  // Those answers, by key. They are the visitor's own, just given.
+  const givenRef = useRef({});
+  // Only the popup counts toward the popup's own numbers in admin Analytics.
+  const viaPopupRef = useRef(false);
   // Whether this browser held a run before the popup's answer went in: the
   // popup answer alone was just given by whoever is here now (PR 447 review).
   const storedContentRef = useRef(false);
@@ -201,24 +211,56 @@ export default function FindYourPlaceClient() {
       if (saved) shownRef.current = true;
       setStep(stored.step === 3 && !saved ? 2 : stored.step ?? 1);
     }
-    // A group size picked in the homepage popup (?group=2): that answer goes
-    // in, on page 1, and anything else saved on this browser stays.
+    // Answers given on the homepage: a group size from the popup (?group=2),
+    // or the hero bar's (?group=2&budget=1200&modes=walk,bike&src=home). They
+    // go in, on page 1, and anything else saved on this browser stays.
     const params = new URLSearchParams(window.location.search);
+    const given = {};
     // "5+" is the same as tapping 5+ on page 1: 5, with the exact number open.
     const picked = params.get("group");
-    const group = picked === "5+" ? String(BIG_GROUP_MIN) : picked;
-    if (GROUP_OPTIONS.includes(picked)) {
+    if (GROUP_OPTIONS.includes(picked)) given.group = picked === "5+" ? String(BIG_GROUP_MIN) : picked;
+    // The budget range: ?budget= is the top (an amount, or "nomax" for no
+    // top) and ?budgetMin= the bottom. A link with only ?budget=1200 (the
+    // older single amount) reads as "up to $1,200".
+    const rawMax = params.get("budget");
+    const max = rawMax === "nomax" ? NO_MAX : /^\d{1,6}$/.test(rawMax ?? "") ? budgetAmount(rawMax) : null;
+    if (max !== null) {
+      given.budget = max;
+      const min = /^\d{1,6}$/.test(params.get("budgetMin") ?? "") ? budgetAmount(params.get("budgetMin")) : null;
+      // The bar's range replaces the saved one whole: a minimum kept from an
+      // earlier visit could sit above the new top or set a floor nobody picked.
+      given.budgetMin = min !== null && (max === NO_MAX || min < max) ? min : null;
+    }
+    const asked = (params.get("modes") ?? "").split(",");
+    const modes = COMMUTE_MODES.map((m) => m.id).filter((id) => asked.includes(id));
+    if (modes.length) given.modes = modes;
+    const fromBar = params.get("from") === "home";
+    if (Object.keys(given).length) {
       fromPopupRef.current = true;
-      setAnswers((current) => ({ ...current, group }));
+      viaPopupRef.current = !fromBar;
+      givenRef.current = given;
+      setAnswers((current) => {
+        const next = { ...current, ...given };
+        // The follow-up asks about the slowest mode: a different one asks again.
+        if (given.modes && slowestMode(given.modes)?.id !== slowestMode(current.modes)?.id) next.commuteMax = null;
+        return next;
+      });
       setStep(1);
-      params.delete("group");
+    } else if (fromBar) {
+      // Start Matching with nothing filled still means "start": page 1, with
+      // anything saved on this browser kept.
+      setStep(1);
+    }
+    if (Object.keys(given).length || fromBar) {
+      for (const key of ["group", "budget", "budgetMin", "modes"]) params.delete(key);
+      if (fromBar) params.delete("from");
       const qs = params.toString();
       window.history.replaceState(null, "", `/find-your-place${qs ? `?${qs}` : ""}`);
     }
     setReady(true);
     trackEvent("Find Your Place Opened", { resumed: !!stored, from: getPreviousPath("/find-your-place") });
     // Once per page view: React's development double mount runs this twice.
-    if (!openedRef.current) recordFyp("opened", { resumed: !!stored, fromPopup: fromPopupRef.current });
+    if (!openedRef.current) recordFyp("opened", { resumed: !!stored, fromPopup: viaPopupRef.current, fromBar });
     openedRef.current = true;
   }, []);
 
@@ -294,7 +336,11 @@ export default function FindYourPlaceClient() {
     setSettled(true);
     const intent = readClaimIntent();
     if (owner && owner !== viewer) {
+      // The answers they just gave on the homepage are theirs: they stay
+      // when someone else's run is cleared away (as "Not mine" does).
+      const given = givenRef.current;
       wipe();
+      if (Object.keys(given).length) setAnswers({ ...EMPTY_ANSWERS, ...given });
       setOwner(viewer);
       return;
     }
@@ -339,16 +385,16 @@ export default function FindYourPlaceClient() {
   useEffect(() => {
     if (!ready || !settled || askClaim || !signedIn || prefilled) return;
     setPrefilled(true);
-    // The popup's group answer alone still counts as an untouched form; the
-    // profile fills the rest and never replaces that answer.
-    const own = fromPopupRef.current ? 1 : 0;
+    // The answers given on the homepage alone still count as an untouched
+    // form; the profile fills the rest and never replaces those answers.
+    const own = ["group", "budget"].filter((k) => givenRef.current[k] != null).length;
     if (answeredCount(answers) > own || results) return;
     fetch("/api/account/lease-preferences")
       .then((res) => (res.ok ? res.json() : null))
       .then((saved) => {
         if (!saved) return;
         const fromProfile = answersFromProfile(saved);
-        if (fromPopupRef.current) delete fromProfile.group;
+        for (const key of Object.keys(givenRef.current)) delete fromProfile[key];
         if (Object.keys(fromProfile).length) {
           setAnswers((current) => (answeredCount(current) > own ? current : { ...current, ...fromProfile }));
         }
@@ -371,7 +417,7 @@ export default function FindYourPlaceClient() {
     // Only the ideas whose sentence still stands in the box: one the student
     // deleted is not a preference any more.
     const input = { ...merged, chips: standingChips(merged.text, merged.chips) };
-    const payload = { ...input, sessionId: results?.sessionId ?? null, fromPopup: fromPopupRef.current, retry: force };
+    const payload = { ...input, sessionId: results?.sessionId ?? null, fromPopup: viaPopupRef.current, retry: force };
     if (!force && results?.matches && results.key === keyOf(input)) {
       setError(null);
       goTo(3);
@@ -565,7 +611,9 @@ export default function FindYourPlaceClient() {
               onClick={() => {
                 trackEvent("Find Your Place Basics Done", {
                   group: answers.group,
-                  budget: answers.budget === NO_PREFERENCE ? null : answers.budget,
+                  budget: typeof answers.budget === "number" ? answers.budget : null,
+                  budgetMin: typeof answers.budgetMin === "number" ? answers.budgetMin : null,
+                  budgetRange: budgetRangeLabel(answers.budgetMin, answers.budget) || null,
                   lease: LEASE_OPTIONS.some((o) => o.id === answers.lease) ? answers.lease : answers.lease === NO_PREFERENCE ? null : "other",
                   modes: answers.modes.join(","),
                 });
@@ -605,11 +653,11 @@ export default function FindYourPlaceClient() {
           onQuiet={() => {
             trackEvent("Find Your Place Claim Declined");
             setAskClaim(false);
-            // The group size they just tapped in the homepage popup is theirs:
-            // it stays when someone else's run is cleared away.
-            const popupGroup = fromPopupRef.current ? answers.group : null;
+            // The answers they just gave on the homepage are theirs: they
+            // stay when someone else's run is cleared away.
+            const given = givenRef.current;
             wipe();
-            if (popupGroup) setAnswers({ ...EMPTY_ANSWERS, group: popupGroup });
+            if (Object.keys(given).length) setAnswers({ ...EMPTY_ANSWERS, ...given });
             setOwner(viewer);
           }}
           primaryLabel="Add to My Account"

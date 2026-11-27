@@ -281,7 +281,7 @@ export async function fetchG5Inventory(locationUrn, { vlsHost = VLS_DEFAULT } = 
     }
     if (!offers.length && money(p.startingRate)) {
       const term = num(String(p.leaseTermBasisMin ?? "").match(/\d+/)?.[0]);
-      offers.push({ rent: money(p.startingRate), rentIsPerPerson: false, leaseTermMonths: term ? [term] : [], availableFrom: null, apartments: [] });
+      offers.push({ rent: money(p.startingRate), rentIsPerPerson: false, rentIsExact: false, leaseTermMonths: term ? [term] : [], availableFrom: null, apartments: [] });
     }
     if (p.floorplanSpecial?.name) concessions.add(String(p.floorplanSpecial.name).trim());
     const images = [...new Set([p.imageUrl, ...(p.imageUrls ?? [])].filter((u) => typeof u === "string" && /^https?:/.test(u)))];

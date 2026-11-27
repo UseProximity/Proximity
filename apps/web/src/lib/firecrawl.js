@@ -15,9 +15,10 @@
  * checked against sent_emails so many server instances do not each send one.
  *
  * firecrawlRequest returns the Response from the first key that did not refuse,
- * or null when no key is set or every key is resting. Callers already treat
- * null as "Firecrawl is not available" and fall back to Jina, Tavily or the
- * plain fetch.
+ * or null when no key is set or every key is resting. Callers treat null as
+ * "Firecrawl is not available": imports and the sync then read only what a
+ * plain fetch returns, and source discovery stops (there is no Jina or Tavily
+ * fallback since PR 483).
  */
 
 const BASE = "https://api.firecrawl.dev";
@@ -131,7 +132,7 @@ async function sendAlert(kind, { using, spent }) {
   const intro =
     kind === "switched"
       ? `Firecrawl refused the ${spent.map((s) => s.label).join(" and ")} key, so imports, website sync and source discovery are now running on the ${using.label} key.`
-      : `Firecrawl refused every key we have (${spent.map((s) => s.label).join(", ")}). Website imports and sync fall back to Jina and Tavily, which cannot read some sites, and source discovery falls back to Tavily search.`;
+      : `Firecrawl refused every key we have (${spent.map((s) => s.label).join(", ")}). There is no other renderer any more: website imports and the sync read only the plain page (most leasing sites show no units that way), and source discovery stops, until a key has credits again.`;
   const action =
     kind === "switched"
       ? "Top up or turn on auto recharge for the main Firecrawl account. Calls move back to it on their own within an hour of it having credits again."

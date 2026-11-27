@@ -1,7 +1,7 @@
 {
   "_description": "All files in src/lib and src/utils: path + first line of their file header comment.",
-  "_generated": "2026-11-24T03:16:08.355Z",
-  "count": 368,
+  "_generated": "2026-11-26T20:17:42.562Z",
+  "count": 386,
   "utils": [
     {
       "file": "src/lib/admin/adminDb.js",
@@ -42,6 +42,14 @@
     {
       "file": "src/lib/agents/budget.js",
       "description": "The agents' AI spend caps (PRD v3; enforced since the PR #365 review,"
+    },
+    {
+      "file": "src/lib/agents/chatListingRules.js",
+      "description": "The pure rules behind listing updates from chat messages"
+    },
+    {
+      "file": "src/lib/agents/chatListingUpdates.js",
+      "description": "Listing updates from what a landlord says in chat (Ben's idea, Wyatt"
     },
     {
       "file": "src/lib/agents/compliance.js",
@@ -396,6 +404,10 @@
       "description": "Versions of the marketing agreement document (agreement_versions). An admin"
     },
     {
+      "file": "src/lib/billing/authorizedPayers.js",
+      "description": "An authorized payer for a landlord account, or for one of its listings (Wyatt,"
+    },
+    {
       "file": "src/lib/billing/autopay.js",
       "description": "Autopay: a landlord may let Proximity charge their monthly invoice to a saved"
     },
@@ -557,7 +569,7 @@
     },
     {
       "file": "src/lib/billing/payerLinks.js",
-      "description": "Who pays for a landlord account (billing_payers, Project B, Wyatt 2026-11-09)."
+      "description": "Who signs and who pays for a landlord account (billing_payers)."
     },
     {
       "file": "src/lib/billing/payers.js",
@@ -618,6 +630,10 @@
     {
       "file": "src/lib/chat/alertRoutes.js",
       "description": "Where a thread's chat alert emails go for one participant, for admin views."
+    },
+    {
+      "file": "src/lib/chat/applicationLinks.js",
+      "description": "Application links in chat (Wyatt, 2026-11-20)."
     },
     {
       "file": "src/lib/chat/attachments.js",
@@ -694,6 +710,10 @@
     {
       "file": "src/lib/chat/replyAddress.js",
       "description": "Private reply addresses for chat alert emails."
+    },
+    {
+      "file": "src/lib/chat/replyNote.js",
+      "description": "Tell the sender of an emailed reply what Proximity took out of it (Wyatt,"
     },
     {
       "file": "src/lib/chat/replySenderApproval.js",
@@ -1220,8 +1240,36 @@
       "description": "Copy a photo or floor plan off a landlord's website into our R2 bucket."
     },
     {
+      "file": "src/lib/sourceImport/checker.js",
+      "description": "The rare Claude checker (Wyatt, 2026-11-22). Code and Jev decide every"
+    },
+    {
+      "file": "src/lib/sourceImport/compare.js",
+      "description": "Old version next to new version, for one listing, writing nothing (the"
+    },
+    {
+      "file": "src/lib/sourceImport/decisions.js",
+      "description": "What the website sync decided, for people to read and overrule (Wyatt,"
+    },
+    {
       "file": "src/lib/sourceImport/describeChange.js",
       "description": "A website change, side by side (Wyatt, 2026-11-05): for every change a"
+    },
+    {
+      "file": "src/lib/sourceImport/evidence.js",
+      "description": "The text each fact of a read came from, for Jev to check (sync confidence"
+    },
+    {
+      "file": "src/lib/sourceImport/hints.js",
+      "description": "Fill-in hints for an import (Wyatt, 2026-11-24): what the read could not"
+    },
+    {
+      "file": "src/lib/sourceImport/jev.js",
+      "description": "Jev (TypeSafe AI's decision model) through Vercel AI Gateway: yes/no and"
+    },
+    {
+      "file": "src/lib/sourceImport/jevPass.js",
+      "description": "The Jev pass over one run's shadow-scored changes (shadow.js, jev.js)."
     },
     {
       "file": "src/lib/sourceImport/jobs.js",
@@ -1238,6 +1286,10 @@
     {
       "file": "src/lib/sourceImport/limits.js",
       "description": "Spending caps for the URL importer."
+    },
+    {
+      "file": "src/lib/sourceImport/match.js",
+      "description": "Pairing a read's units with the listing's units (lib/sourceImport/apply.js"
     },
     {
       "file": "src/lib/sourceImport/model.js",
@@ -1308,8 +1360,28 @@
       "description": "A Zillow listing's own photos."
     },
     {
+      "file": "src/lib/sourceImport/recipe.js",
+      "description": "Listing recipes: how code reads a site's units with no model (sync"
+    },
+    {
+      "file": "src/lib/sourceImport/recipeStore.js",
+      "description": "Saved recipes (recipe.js): one active per listing and one per platform,"
+    },
+    {
       "file": "src/lib/sourceImport/sanitize.js",
       "description": "Make an imported description publishable under the content rules."
+    },
+    {
+      "file": "src/lib/sourceImport/score.js",
+      "description": "The sync's confidence scores (PRD \"Sync confidence ledger\", Wyatt"
+    },
+    {
+      "file": "src/lib/sourceImport/shadow.js",
+      "description": "Shadow scoring (PRD stage 1). Every change a daily sync plans is also"
+    },
+    {
+      "file": "src/lib/sourceImport/shadowStore.js",
+      "description": "Saving shadow scores (shadow.js) for one sync run. Best effort: a failure"
     },
     {
       "file": "src/lib/sourceImport/snapshot.js",

@@ -22,6 +22,8 @@
  * The interval lives on the monitor (check_interval_days, default 1 since
  * the agents), so moving a landlord to weekly is a column update.
  */
+import { loadRecipes, saveMadeRecipe, noteRecipeRun, recipesOn } from "./recipeStore.js";
+import { awaitingSecondRead } from "./shadowStore.js";
 import supabase from "@/lib/supabase";
 import { getBaseUrl, needsLook, sendSourceSyncDigestEmail, sendSourceSyncFailureEmail, sendSourceSyncSkippedEmail } from "@/lib/email";
 import { isNeverSourceUrl, sourceKindEnabled } from "@/lib/sourceSync/classify";
@@ -66,6 +68,13 @@ export const isDeepDay = (now = new Date()) => now.getUTCDay() === 0;
  */
 const READ_BUDGET_MS = 210000;
 const KNOWLEDGE_CUTOFF_MS = 200000;
+/*
+ * Jev's checks stop asking this long into the run, whatever their own
+ * budget, so a long read plus the checks never runs the five-minute function
+ * out before the changes are saved (PR 483 review). Any it did not reach are
+ * scored as unchecked and asked again on the next read.
+ */
+const JEV_CUTOFF_MS = 225000;
 export const nextCheckAt = (days, now = Date.now()) => new Date(now + days * 86400000 - SCHEDULE_SLACK_MS).toISOString();
 const plusDays = (days) => nextCheckAt(days);
 
@@ -128,7 +137,7 @@ export async function monitorFor(listingId) {
 async function keepSnapshot(monitorId, { ok, snapshot = null, error = null }) {
   // The snapshot minus photo lists, which are long and not what a diff needs.
   const normalized = snapshot
-    ? { ...snapshot, property: { ...snapshot.property, photos: snapshot.property.photos.length }, units: snapshot.units.map((u) => ({ ...u, photos: u.photos.length })) }
+    ? { ...snapshot, evidence: undefined, recipe: snapshot.recipe ? { ...snapshot.recipe, made: snapshot.recipe.made ? true : null } : undefined, property: { ...snapshot.property, photos: snapshot.property.photos.length }, units: snapshot.units.map((u) => ({ ...u, photos: u.photos.length })) }
     : null;
   await supabase.from("listing_source_snapshots").insert({
     monitor_id: monitorId,
@@ -194,6 +203,9 @@ export async function syncMonitor(m, { force = false, autoApply = null, onStep =
       target: { name: listing.title ?? listing.address, address: listing.address, url: m.source_url, levelUrl: m.index_url },
       knownPortal: m.portal ?? null,
       deep: goDeep,
+      // Every day but the weekly deep read: code reads, no model (recipes).
+      daily: !goDeep && recipesOn(),
+      recipeFor: (platformKey) => loadRecipes(listing.id, platformKey),
       deadline: started + READ_BUDGET_MS,
       // Nothing is applied while a portal walk is unfinished, so the read
       // stops there and leaves the run's time to the walk.
@@ -201,6 +213,16 @@ export async function syncMonitor(m, { force = false, autoApply = null, onStep =
       onStep,
     });
     if (snapshot.portal) await supabase.from("listing_source_monitors").update({ portal: snapshot.portal }).eq("id", m.id);
+    // The recipe this read used or worked out (recipeStore.js).
+    await noteRecipeRun({ info: snapshot.recipe });
+    await saveMadeRecipe({ listingId: listing.id, info: snapshot.recipe });
+    // A site no recipe can read: the daily sync leaves the listing as it is.
+    if (snapshot.dailySkipped) {
+      const note = "This website is read on the weekly deep read only: code cannot read its units, and the daily sync uses no model";
+      await supabase.from("listing_source_monitors").update({ last_checked_at: new Date().toISOString(), last_status: "ok", last_error: null, consecutive_failures: 0, next_check_at: plusDays(interval) }).eq("id", m.id);
+      console.log(`[source-sync] ${label}: ${note}`);
+      return { listingId: listing.id, listing: label, status: "ok", platform: "none", confidence: "low", seconds: Math.round((Date.now() - started) / 1000), applied: [], held: [], denied: [], holdReason: null, refused: snapshot.trace?.refused ?? [], summary: null, pages: [], unitPages: [], note, dailySkipped: true };
+    }
     /*
      * A leasing portal too large to walk in one run: what it has so far is
      * on the monitor and the listing is due again at once, so the next run
@@ -220,7 +242,7 @@ export async function syncMonitor(m, { force = false, autoApply = null, onStep =
     }
     // Units with their own page: read those pages alone and trust them for
     // their unit (lib/sourceSync/unitPages.js).
-    const { pages: unitPages } = await mergeUnitPages({ listing, snapshot, onStep });
+    const { pages: unitPages } = await mergeUnitPages({ listing, snapshot, onStep, daily: !goDeep && recipesOn() });
     await keepSnapshot(m.id, { ok: true, snapshot });
     const fp = fingerprint(snapshot);
     // Photos weekly (Wyatt, 2026-11-12): the deep read, or a sync someone
@@ -233,8 +255,13 @@ export async function syncMonitor(m, { force = false, autoApply = null, onStep =
     const images = goDeep || force || gaps.overdue;
     // An unpriced listing with no hidden prices yet takes one full pass even
     // on an unchanged page, so its website prices get saved (PR 474 review).
-    const sameAsLast = !force && m.last_fingerprint === fp && !(images && gaps.any);
-    const unchanged = sameAsLast && !(await hiddenRentsMissing(listing.id));
+    // A complete weekly read always applies, even when it matches the last
+    // read: weekday code reads never withdraw a unit they did not find, so
+    // this is the run that takes a gone unit's leases down (PR 483 review).
+    const completeWeekly = goDeep && !!snapshot.unitListComplete;
+    const sameAsLast = !force && !completeWeekly && m.last_fingerprint === fp && !(images && gaps.any);
+    // A withdrawal the scores left for its second read is read again even on an unchanged page.
+    const unchanged = sameAsLast && !(await hiddenRentsMissing(listing.id)) && !(await awaitingSecondRead(listing.id));
     let result = null;
     // Same website as last time: its prices are still showing, so the hidden
     // copies the last full read of it saved stay fresh for matchmaking (that
@@ -242,7 +269,7 @@ export async function syncMonitor(m, { force = false, autoApply = null, onStep =
     if (unchanged) await touchHiddenRents(listing.id, [snapshot.sourceUrl, m.source_url]);
     if (!unchanged) {
       onStep("Saving");
-      result = await applySnapshot({ snapshot, listingId: listing.id, mode: "sync", monitorId: m.id, autoApply: autoApply ?? m.auto_apply !== false, listingLabel: label, userId: actorId, churnGuard: !force, images });
+      result = await applySnapshot({ snapshot, listingId: listing.id, mode: "sync", monitorId: m.id, autoApply: autoApply ?? m.auto_apply !== false, listingLabel: label, userId: actorId, churnGuard: !force, images, jevDeadline: started + JEV_CUTOFF_MS });
       // Skipped for churn: the team hears at once, the first day in a row.
       if (result?.churn && m.last_status !== "suppressed") {
         await sendSourceSyncSkippedEmail({ to: ALERT_TO, listing: label, listingId: listing.id, sourceUrl: m.source_url, touched: result.churn.touched, existing: result.churn.existing, newUnits: result.churn.newUnits, units: result.churn.units, baseUrl }).catch((e) => console.error("[source-sync] skipped email:", e?.message));
@@ -251,7 +278,10 @@ export async function syncMonitor(m, { force = false, autoApply = null, onStep =
     let pages = [];
     const late = Date.now() - started > KNOWLEDGE_CUTOFF_MS;
     if (knowledge && late) console.log(`[source-sync] ${label}: read ran long, specials go into knowledge on the next run`);
-    if (knowledge && !late) {
+    // Specials go into knowledge on the weekly read only: the daily sync
+    // calls no model (Wyatt, 2026-11-24), and a special that changed or
+    // vanished midweek waits for Sunday rather than being guessed at.
+    if (knowledge && !late && (goDeep || !recipesOn())) {
       onStep("Checking the website's specials");
       const specials = await syncSpecials({ listingId: listing.id, concessions: snapshot.property?.concessions ?? [], sourceUrl: snapshot.sourceUrl ?? m.source_url, actorId }).catch((e) => ({ url: m.source_url, error: String(e?.message ?? e).slice(0, 300) }));
       if (specials) pages = [specials];

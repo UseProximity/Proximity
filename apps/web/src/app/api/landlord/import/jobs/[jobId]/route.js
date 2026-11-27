@@ -3,6 +3,7 @@ export const maxDuration = 300;
 
 import { NextResponse, after } from "next/server";
 import supabase from "@/lib/supabase";
+import { endListingLinks } from "@/lib/billing/payerLinks";
 import { requireImporter } from "../../_auth";
 import { runPendingJobs } from "@/lib/sourceImport/jobs";
 import { spendImport } from "@/lib/sourceImport/limits";
@@ -44,6 +45,7 @@ export async function DELETE(req, { params }) {
     const { data: l } = await supabase.from("listings").select("id, published_at").eq("id", job.listing_id).maybeSingle();
     if (l && l.published_at === null) {
       await supabase.from("listings").update({ deleted_at: new Date().toISOString() }).eq("id", l.id);
+      await endListingLinks(supabase, l.id).catch((err) => console.error("[import job] ending the draft's signer and payer failed:", err?.message));
     }
   }
   await supabase.from("listing_import_jobs").update({ status: "cancelled", step: "Removed" }).eq("id", jobId);

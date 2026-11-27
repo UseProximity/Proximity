@@ -1,7 +1,7 @@
 {
   "_description": "All React components in the Proximity app. Update COMPONENT_DESCRIPTIONS in generate-knowledge.mjs when adding new components.",
-  "_generated": "2026-11-23T20:10:21.951Z",
-  "count": 228,
+  "_generated": "2026-11-26T20:59:08.449Z",
+  "count": 236,
   "components": [
     {
       "name": "ErrorReporter",
@@ -134,6 +134,11 @@
       "description": "No description. Run generate after adding a description above."
     },
     {
+      "name": "SyncDecisions",
+      "file": "src/components/admin/SyncDecisions.js",
+      "description": "No description. Run generate after adding a description above."
+    },
+    {
       "name": "SystemToolsView",
       "file": "src/components/admin/SystemToolsView.js",
       "description": "No description. Run generate after adding a description above."
@@ -251,6 +256,11 @@
     {
       "name": "PaperAgreement",
       "file": "src/components/admin/billing/agreements/PaperAgreement.js",
+      "description": "No description. Run generate after adding a description above."
+    },
+    {
+      "name": "SignersAndPayersPanel",
+      "file": "src/components/admin/billing/agreements/SignersAndPayersPanel.js",
       "description": "No description. Run generate after adding a description above."
     },
     {
@@ -494,6 +504,11 @@
       "description": "No description. Run generate after adding a description above."
     },
     {
+      "name": "BudgetRange",
+      "file": "src/components/findYourPlace/BudgetRange.js",
+      "description": "No description. Run generate after adding a description above."
+    },
+    {
       "name": "FindYourPlaceClient",
       "file": "src/components/findYourPlace/FindYourPlaceClient.js",
       "description": "No description. Run generate after adding a description above."
@@ -556,6 +571,31 @@
     {
       "name": "ScrollToTop",
       "file": "src/components/guides/ScrollToTop.js",
+      "description": "No description. Run generate after adding a description above."
+    },
+    {
+      "name": "HeroSection",
+      "file": "src/components/home/HeroSection.js",
+      "description": "No description. Run generate after adding a description above."
+    },
+    {
+      "name": "HomeFaq",
+      "file": "src/components/home/HomeFaq.js",
+      "description": "No description. Run generate after adding a description above."
+    },
+    {
+      "name": "HowItWorks",
+      "file": "src/components/home/HowItWorks.js",
+      "description": "No description. Run generate after adding a description above."
+    },
+    {
+      "name": "ListingDeck",
+      "file": "src/components/home/ListingDeck.js",
+      "description": "No description. Run generate after adding a description above."
+    },
+    {
+      "name": "MatchBar",
+      "file": "src/components/home/MatchBar.js",
       "description": "No description. Run generate after adding a description above."
     },
     {

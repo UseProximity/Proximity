@@ -43,6 +43,13 @@ import {
 } from "@/lib/listingDraft/fetchSite";
 import { pageCacheStore } from "./pageCache.js";
 import { isDocumentUrl, readDocument } from "./readers/document.js";
+import { collectEvidence } from "./evidence.js";
+import { naturalName } from "./match.js";
+import { startingAtTerm } from "./score.js";
+import { induceRecipe, replayRecipe, compareReads, recipeBroken, platformRecipeFits, detectPlatform, deeperLinks, deepenUnits } from "./recipe.js";
+
+// A saved recipe that read its site within the last two days.
+const recentlyOk = (row) => !!row?.last_ok_at && Date.now() - new Date(row.last_ok_at).getTime() < 2 * 86400000;
 
 // Every read shares fetched pages with the rest of its batch
 // (IMPORT_PAGE_CACHE=0 turns it off, for measuring or debugging).
@@ -455,6 +462,18 @@ export const planKey = (s) =>
 const sameLayout = (a, b) =>
   a.bedrooms != null && a.bedrooms === b.bedrooms && Number(a.bathrooms) === Number(b.bathrooms) && a.area && b.area && Math.abs(a.area - b.area) <= 2;
 
+/* Equal beds and baths, sizes within 3%. */
+const closeLayout = (a, b) =>
+  a.bedrooms != null && a.bedrooms === b.bedrooms && Number(a.bathrooms) === Number(b.bathrooms) && a.area && b.area && Math.abs(a.area - b.area) / Math.max(a.area, b.area) <= 0.03;
+
+/* The same set of prices on both, and at least one. */
+function sameOfferings(a, b) {
+  const set = (u) => [...new Set((u.offers ?? []).map((o) => o.rent).filter((n) => n != null))].sort((x, y) => x - y);
+  const x = set(a);
+  const y = set(b);
+  return x.length > 0 && x.length === y.length && x.every((n, i) => n === y[i]);
+}
+
 /*
  * One entry per floor plan. Two entries with the same name (after "Unit",
  * "Plan" and punctuation are set aside) are one plan, their leases pooled.
@@ -476,8 +495,25 @@ function mergeInto(twin, u) {
   twin.available = twin.available !== false || u.available !== false;
 }
 
+// A daily sync asks no model whether two entries are one plan (Wyatt, 2026-11-20).
+export const codeJudge = async () => ({ same: false, reason: "decided by code on a daily sync" });
+
 export async function dedupeLayouts(units, { judge = judgeSamePlan } = {}) {
   const out = [];
+  const src = (x) => x.source ?? "website";
+  /*
+   * Two named plans from two sources are one plan by price alone only when
+   * the match is unique (PR 483 review): exactly one entry on the other
+   * source fits, and it has not already taken in a plan from this source.
+   * Two 4x4s at $725 on both sources stay four entries rather than two
+   * wrong pairs; matching then pairs each with the listing's own units.
+   */
+  const priceTwin = (u, fits) => {
+    const c = out.filter((o) => planKey(o.name) && src(o) !== src(u) && fits(o, u) && sameOfferings(o, u));
+    if (c.length !== 1 || (c[0].absorbed ?? []).includes(src(u))) return null;
+    const rivals = units.filter((x) => x !== u && planKey(x.name) && src(x) === src(u) && fits(c[0], x) && sameOfferings(c[0], x));
+    return rivals.length ? null : c[0];
+  };
   for (const u of units) {
     const named = planKey(u.name);
     let twin = named ? out.find((o) => planKey(o.name) === named) : null;
@@ -488,6 +524,12 @@ export async function dedupeLayouts(units, { judge = judgeSamePlan } = {}) {
           break;
         }
         if ((o.source ?? "website") === (u.source ?? "website")) continue;
+        // Same layout and the same prices from two sources: one plan, by code, when no other plan fits as well.
+        if (sameOfferings(o, u)) {
+          if (priceTwin(u, sameLayout) !== o) continue;
+          twin = o;
+          break;
+        }
         const verdict = await judge(o, u);
         console.log(`[source-import] same plan? "${o.name}" (${o.source ?? "website"}) and "${u.name}" (${u.source ?? "website"}): ${verdict.same ? "yes" : "no"}, ${verdict.reason}`);
         if (verdict.same) {
@@ -496,9 +538,21 @@ export async function dedupeLayouts(units, { judge = judgeSamePlan } = {}) {
         }
       }
     }
-    if (twin) mergeInto(twin, u);
-    else out.push(u);
+    // Two sources, two names, the same layout (within 3%) and the same prices:
+    // one plan under two names (Wyatt, 2026-11-24).
+    if (!twin && named) twin = priceTwin(u, closeLayout);
+    if (twin) {
+      if (src(twin) !== src(u)) twin.absorbed = [...new Set([...(twin.absorbed ?? []), src(u)])];
+      const keep = naturalName(twin.name, u.name);
+      mergeInto(twin, u);
+      // The name not kept stays with the plan, so a listing that already
+      // has the plan under that name still pairs with it (PR 483 review).
+      const dropped = [twin.name, u.name, ...(u.aka ?? [])].filter((n) => n && planKey(n) !== planKey(keep));
+      if (dropped.length) twin.aka = [...new Set([...(twin.aka ?? []), ...dropped])];
+      twin.name = keep;
+    } else out.push(u);
   }
+  for (const o of out) delete o.absorbed;
   return out;
 }
 
@@ -748,7 +802,7 @@ export function readProperty(args) {
  * where that unit's data lives, so nothing else is opened: no own-site hop,
  * no floor plan index, no per-apartment pages, no exploring for gaps.
  */
-async function readPropertyInner({ pastedUrl: rawPasted, target, onStep = () => {}, knownPortal = null, onlyThisPage = false, allowUrl = null, deep = false, deadline = null, stopWhenPending = false, _crawl = null, _brandName = null, _modelDraft = null }) {
+async function readPropertyInner({ pastedUrl: rawPasted, target, onStep = () => {}, knownPortal = null, onlyThisPage = false, allowUrl = null, deep = false, deadline = null, stopWhenPending = false, daily = false, recipeFor = null, _crawl = null, _brandName = null, _modelDraft = null }) {
   const pastedUrl = withScheme(String(rawPasted ?? target.levelUrl ?? target.url).trim());
   const startUrl = withScheme(String(target.levelUrl ?? pastedUrl).trim());
   const notes = [];
@@ -942,7 +996,7 @@ async function readPropertyInner({ pastedUrl: rawPasted, target, onStep = () => 
         // The portal's apartments win where both list them; plans and
         // apartments only another reader found (SightMap, the website's own
         // feed) are kept, not dropped.
-        readerUnits = await dedupeLayouts([...sc.units.map((u) => ({ ...u, source: "the leasing portal" })), ...readerUnits]);
+        readerUnits = await dedupeLayouts([...sc.units.map((u) => ({ ...u, source: "the leasing portal" })), ...readerUnits], daily ? { judge: codeJudge } : {});
         embeddedConcessions = [...new Set([...embeddedConcessions, ...sc.concessions])];
         notes.push(...sc.notes);
         confidence = "high";
@@ -1019,7 +1073,7 @@ async function readPropertyInner({ pastedUrl: rawPasted, target, onStep = () => 
           if (!(u.photos ?? []).length) u.photos = e.photos ?? [];
         }
         platform = readerUnits.length ? `${platform}+${def.kind}` : def.kind;
-        readerUnits = await dedupeLayouts([...rp.units.map((u) => ({ ...u, source: "the leasing portal" })), ...readerUnits]);
+        readerUnits = await dedupeLayouts([...rp.units.map((u) => ({ ...u, source: "the leasing portal" })), ...readerUnits], daily ? { judge: codeJudge } : {});
         notes.push(...rp.notes);
         // A walk the portal cut short is not the whole building: a sync
         // must not withdraw the apartments it never reached.
@@ -1115,6 +1169,96 @@ async function readPropertyInner({ pastedUrl: rawPasted, target, onStep = () => 
   }
 
   /*
+   * The listing's recipe (recipe.js): when no platform reader read the units,
+   * code replays how they were found last time. On a daily sync that is the
+   * whole read: no model is called (Wyatt, 2026-11-20). A site with no
+   * recipe, or whose recipe has stopped working, is read by the model once
+   * below, and a new recipe is worked out from that read.
+   */
+  const pageTexts = () => crawl.fetched.map((f) => ({ url: f.finalUrl, text: htmlToText(f.html) }));
+  const recipeInfo = { platformKey: null, used: null, usedId: null, version: null, found: 0, missing: [], added: [], broken: false, deepened: [], made: null, madeFrom: null, check: null };
+  let recipeUnits = false;
+  if (recipeFor) {
+    recipeInfo.platformKey = detectPlatform(crawl.fetched.map((f) => ({ url: f.finalUrl, html: f.html })));
+    const saved = await recipeFor(recipeInfo.platformKey);
+    /*
+     * A site code could not learn to read (prose, prices in pictures) is
+     * marked so (kind "none"). The daily sync leaves it alone, with no model
+     * call, and the weekly read keeps it current (Wyatt, 2026-11-20: the
+     * daily sync uses no Haiku at all; one rebuild try is the exception).
+     */
+    if (daily && !readerUnits.length && saved?.listing?.recipe?.kind === "none") {
+      const snapshot = makeSnapshot({ sourceUrl: propPage?.finalUrl ?? main.finalUrl, indexUrl: null, platform: "none", confidence: "low", unitListComplete: false, property: { name: target.name ?? null, address: target.address ?? null }, units: [], notes: [] });
+      snapshot.trace = { pages: crawl.fetched.map((f) => ({ url: f.finalUrl })), refused: crawl.refused, reader: "none", codeOnly: true };
+      snapshot.recipe = { ...recipeInfo, used: "listing", usedId: saved.listing.id, version: saved.listing.version };
+      snapshot.dailySkipped = true;
+      console.log(`[source-import] ${target.name}: no recipe can read this site; left for the weekly read`);
+      return snapshot;
+    }
+    const usable = (row) => (row?.recipe?.kind && row.recipe.kind !== "none" ? row : null);
+    // A platform's shared recipe is only for a listing with no recipe of its
+    // own: one marked "none" is read by the model on the weekly read, so a
+    // recipe of its own can be worked out again (PR 483 review).
+    const pick = usable(saved?.listing) ? { scope: "listing", row: saved.listing } : !saved?.listing && usable(saved?.platform) ? { scope: "platform", row: saved.platform } : null;
+    if (pick && !readerUnits.length) {
+      const recipe = pick.row.recipe;
+      // The pages the recipe reads, opened if this read has not reached them.
+      const wanted = [
+        ...(recipe.pages ?? []),
+        ...crawl.links.filter((l) => { try { return (recipe.paths ?? []).includes(new URL(l.url).pathname.replace(/\/+$/, "") || "/"); } catch { return false; } }).map((l) => l.url),
+      ];
+      for (const url of [...new Set(wanted)].slice(0, 6)) {
+        if (timeLeft() < 60000) break;
+        if (!crawl.fetched.some((f) => f.finalUrl === url)) await crawl.follow(url);
+      }
+      const replay = replayRecipe(recipe, pageTexts(), { known: pick.scope === "listing" ? saved.knownNames ?? [] : [] });
+      // Another building's recipe works here only if it finds most of this listing's own units.
+      const platformMiss = pick.scope === "platform" && !platformRecipeFits(replay.units, saved.knownNames ?? []);
+      Object.assign(recipeInfo, { used: pick.scope, usedId: pick.row.id, version: pick.row.version, found: replay.found, missing: replay.missing, added: replay.added, platformMiss, broken: recipeBroken(recipe, replay) || !replay.units.length || platformMiss, recentOk: pick.scope === "listing" && recentlyOk(pick.row) });
+      if (!recipeInfo.broken) {
+        // Digging deeper: pages that may hold a real price for a starting-at one.
+        const picks = deeperLinks({ units: replay.units, links: crawl.links, visited: new Set(crawl.fetched.map((f) => f.finalUrl)), origin: (() => { try { return new URL(main.finalUrl).host; } catch { return null; } })(), max: 4 });
+        const deeper = [];
+        for (const pk of picks) {
+          if (timeLeft() < 60000) break;
+          const before = crawl.fetched.length;
+          await crawl.follow(pk.url);
+          if (crawl.fetched.length > before) {
+            const f = crawl.fetched[crawl.fetched.length - 1];
+            deeper.push({ url: f.finalUrl, text: htmlToText(f.html), forUnit: pk.unit });
+          }
+        }
+        if (deeper.length) {
+          const had = new Set(replay.units.filter((u) => (u.offers ?? []).some((o) => o.rentIsExact !== false)).map((u) => u.name));
+          deepenUnits(replay.units, deeper);
+          recipeInfo.deepened = replay.units.filter((u) => !had.has(u.name) && (u.offers ?? []).some((o) => o.rentIsExact !== false)).map((u) => u.name);
+        }
+        readerUnits = replay.units;
+        recipeUnits = true;
+        platform = replay.units.some((u) => u.readBy === "pattern") ? "pattern" : "recipe";
+        confidence = "high";
+        console.log(`[source-import] ${target.name}: recipe (${pick.scope} v${pick.row.version}) read ${replay.units.length} units, ${replay.added.length} new, ${replay.missing.length} not found, ${recipeInfo.deepened.length} priced by digging deeper`);
+      } else {
+        console.warn(`[source-import] ${target.name}: recipe (${pick.scope} v${pick.row.version}) no longer reads this site (${replay.found} of ${(recipe.names ?? []).length} units found); reading it again to rebuild`);
+      }
+    }
+  }
+  /*
+   * A daily read with no recipe to try (a unit's own page) that code could
+   * not read: left for the weekly read rather than asking the model (PR 483
+   * review: unit pages were read by Haiku every day).
+   */
+  if (daily && !recipeFor && !readerUnits.length) {
+    const snapshot = makeSnapshot({ sourceUrl: propPage?.finalUrl ?? main.finalUrl, indexUrl: null, platform: "none", confidence: "low", unitListComplete: false, property: { name: target.name ?? null, address: target.address ?? null }, units: [], notes: [] });
+    snapshot.trace = { pages: crawl.fetched.map((f) => ({ url: f.finalUrl })), refused: crawl.refused, reader: "none", codeOnly: true };
+    snapshot.dailySkipped = true;
+    return snapshot;
+  }
+  // A daily sync whose units were read by code calls no model at all. Asked
+  // each time: a leasing portal walked further down can fill the units in.
+  const codeOnly = () => daily && readerUnits.length > 0;
+
+  /*
    * Hunting for what is still missing. The readers (and, the second time,
    * the extraction) have read what they could; factsAbout says exactly
    * what is known and what is not, and the model picks which links to open
@@ -1128,7 +1272,8 @@ async function readPropertyInner({ pastedUrl: rawPasted, target, onStep = () => 
   let explored = onlyThisPage ? MAX_EXPLORED : 0;
   const exploredLog = [];
   const explore = async (unitsNow, listingNow) => {
-    if (explored >= MAX_EXPLORED || timeLeft() < 90000) return 0;
+    // Choosing pages is the model's job; a daily sync does not ask it.
+    if (daily || explored >= MAX_EXPLORED || timeLeft() < 90000) return 0;
     const facts = factsAbout({ units: unitsNow, flyers, listing: listingNow, readerNotes: notes });
     if (!facts.missing.length) return 0;
     const visited = new Set(crawl.fetched.map((f) => f.finalUrl));
@@ -1173,6 +1318,7 @@ async function readPropertyInner({ pastedUrl: rawPasted, target, onStep = () => 
    */
   const flyerSeen = new Set();
   const readFlyers = async () => {
+    if (daily) return;
     for (const f of crawl.fetched) {
       for (const url of findFlyerCandidates(crawl.structureOf(f), f.finalUrl)) {
         if (flyerSeen.has(url) || flyers.length >= 2) continue;
@@ -1215,6 +1361,11 @@ async function readPropertyInner({ pastedUrl: rawPasted, target, onStep = () => 
   let modelUnitCount = 0;
   const extractAndFill = async (force = false) => {
     runNotes = [];
+    if (codeOnly()) {
+      // Two entries are one plan only by name or by an unnamed same layout: no model is asked.
+      units = await dedupeLayouts(readerUnits, { judge: codeJudge });
+      return;
+    }
     if (force || !listing || (!readerUnits.length && !listing.units?.length)) {
       const read = await readWithModel({
         pages: crawl.pages,
@@ -1289,7 +1440,7 @@ async function readPropertyInner({ pastedUrl: rawPasted, target, onStep = () => 
   }
   // A reader that already filed photos per unit (the embedded feed) is not
   // second-guessed; the model sorts only for units that arrived without any.
-  const unsorted = units.filter((u) => !(u.photos ?? []).length);
+  const unsorted = codeOnly() ? [] : units.filter((u) => !(u.photos ?? []).length);
   if (unsorted.length && images.length) {
     onStep("Sorting photos by unit");
     const sorted = await sortPhotosByUnit({ units: unsorted, images: images.filter((im) => !diagrams.has(im.url)) });
@@ -1304,7 +1455,7 @@ async function readPropertyInner({ pastedUrl: rawPasted, target, onStep = () => 
   }
   // The pictures decide which image is each unit's diagram; filenames only
   // nominated candidates.
-  const floorPlanCheck = await confirmFloorPlans(units, { onStep });
+  const floorPlanCheck = codeOnly() ? { costUsd: 0, checked: 0, changed: 0, cleared: 0, unsure: 0 } : await confirmFloorPlans(units, { onStep });
   modelCost += floorPlanCheck.costUsd;
   // Every photo in a Zillow listing's gallery is of this listing: all of
   // them are the property's, in the site's order, less any diagram.
@@ -1325,13 +1476,14 @@ async function readPropertyInner({ pastedUrl: rawPasted, target, onStep = () => 
   const trace = {
     pages: crawl.fetched.map((f) => ({ url: f.finalUrl, chars: htmlToText(f.html).length })),
     reader: platform,
+    codeOnly: codeOnly(),
     readerUnits: readerUnits.length,
     model: modelUsed ?? (listing ? "picker" : null),
     modelUnits: modelUnitCount,
     // What this read spent: model dollars (extraction only; the photo sort
     // and flyer reads are logged separately) and paid render calls.
     modelCostUsd: Math.round(modelCost * 1000) / 1000,
-    renders: { firecrawl: 0, jina: 0, tavily: 0, ...(readCounters.getStore()?.render ?? {}) },
+    renders: { firecrawl: 0, ...(readCounters.getStore()?.render ?? {}) },
     // The pages the model chose to open, and what it hoped to find there.
     explored: exploredLog,
     // Pages reused from another building of the batch, and fetched fresh.
@@ -1359,7 +1511,7 @@ async function readPropertyInner({ pastedUrl: rawPasted, target, onStep = () => 
    * leasing portal priced every lease, repeats are merged.
    */
   const finalFacts = factsAbout({ units, flyers, listing });
-  const reviewed = await reviewNotes({
+  const reviewed = codeOnly() ? { notes: [...new Set(notes)], cost: 0 } : await reviewNotes({
     notes: [...notes, ...(listing?.sourceNotes ?? []).slice(0, 3)],
     facts: [
       ...finalFacts.known,
@@ -1372,6 +1524,22 @@ async function readPropertyInner({ pastedUrl: rawPasted, target, onStep = () => 
   trace.modelCostUsd = Math.round(modelCost * 1000) / 1000;
   const reviewedNotes = reviewed.notes;
   console.log(`[source-import] ${target.name}: trace ${JSON.stringify(trace)}`);
+  /*
+   * A starting-at price whose real prices could not be found by digging
+   * deeper goes on the most obvious lease length: 12 months, or the longest
+   * the unit offers (Wyatt, 2026-11-24). Marked as inferred, so it only ever
+   * fills an empty lease length.
+   */
+  for (const u of units) {
+    const known = (u.offers ?? []).flatMap((o) => o.leaseTermMonths ?? []);
+    for (const o of u.offers ?? []) {
+      if (o.rent != null && o.rentIsExact === false && !(o.leaseTermMonths ?? []).length) {
+        o.leaseTermMonths = [startingAtTerm(known)];
+        o.termsInferred = true;
+        o.termFromStartingAt = true;
+      }
+    }
+  }
   // A portal that was not read in full never applies on its own.
   if (portalMissed) confidence = "low";
   const snapshot = makeSnapshot({
@@ -1379,8 +1547,10 @@ async function readPropertyInner({ pastedUrl: rawPasted, target, onStep = () => 
     indexUrl: sourceUrl === pastedUrl ? null : pastedUrl,
     platform,
     confidence,
-    // Whether a unit missing from this read can be taken as let.
-    unitListComplete: readerUnits.length ? readerComplete && !portalMissed : listing?.unitListComplete === true,
+    // Whether a unit missing from this read can be taken as let. Never on a
+    // daily read by code alone: a unit code did not find is a note, and the
+    // weekly read, with the model, decides (Wyatt, 2026-11-25).
+    unitListComplete: codeOnly() ? false : readerUnits.length ? readerComplete && !portalMissed : listing?.unitListComplete === true,
     property: {
       name: listing?.title ?? target.name ?? null,
       address: listing?.address ?? target.address ?? null,
@@ -1401,6 +1571,46 @@ async function readPropertyInner({ pastedUrl: rawPasted, target, onStep = () => 
   });
   snapshot.model = modelUsed;
   snapshot.trace = trace;
+  // The text each unit was read from, for Jev (evidence.js); never stored.
+  snapshot.evidence = collectEvidence(crawl.fetched.map((f) => ({ url: f.finalUrl, text: htmlToText(f.html) })), snapshot.units, target.address ?? listing?.address ?? null);
+  // A recipe's own block for a unit is exactly the text that unit was read from.
+  for (const u of units) {
+    const key = u.evidence ? snapshot.units.find((x) => x.name && x.name === String(u.name ?? "").replace(/\s+/g, " ").replace(/,/g, " ").trim().slice(0, 80))?.key : null;
+    if (key) snapshot.evidence.units[key] = u.evidence;
+  }
+  /*
+   * Units the model read (an import, a weekly read, or a rebuild): work out
+   * the recipe from this read and keep it only if code, replaying it on the
+   * same pages, finds the same units at the same prices.
+   */
+  if (recipeFor && !recipeUnits && modelUnitCount > 0 && platform === "generic") {
+    const texts = pageTexts();
+    const made = induceRecipe({ pages: texts, units: snapshot.units });
+    if (made) {
+      const check = compareReads(replayRecipe(made, texts).units, snapshot.units);
+      recipeInfo.check = { matched: check.matched, total: check.total, diffs: check.diffs.slice(0, 12) };
+      const from = recipeInfo.broken ? "rebuild" : daily ? "first_daily_read" : deep ? "weekly_read" : "import_read";
+      // Kept only when code reproduces the read; otherwise the site is marked as one code cannot read.
+      // A listing recipe that worked within the last two days is kept through
+      // one bad page: it is not given up for "none" on a single failed replay.
+      recipeInfo.made = check.ok ? made : recipeInfo.broken && recipeInfo.recentOk ? null : { v: made.v, kind: "none" };
+      recipeInfo.madeFrom = check.ok ? from : `${from}: code could not reproduce it`;
+      console.log(`[source-import] ${target.name}: recipe ${check.ok ? "made" : "not kept"} (${check.matched} of ${check.total} units reproduced by code${check.diffs.length ? `; ${check.diffs.slice(0, 3).join("; ")}` : ""})`);
+    } else if (!(recipeInfo.broken && recipeInfo.recentOk)) {
+      recipeInfo.made = { v: 1, kind: "none" };
+      recipeInfo.madeFrom = "units not found in the page text";
+    }
+  }
+  // A daily read that still needed the model and came away with no recipe:
+  // marked as a site code cannot read, so tomorrow's daily sync asks nothing.
+  // Only when the model did read units: a page that showed none today (a
+  // maintenance page, a script shell) says nothing about the site, and a
+  // working recipe is not given up for it (PR 483 review).
+  if (recipeFor && daily && !codeOnly() && !recipeInfo.made && modelUnitCount > 0 && !(recipeInfo.broken && recipeInfo.recentOk)) {
+    recipeInfo.made = { v: 1, kind: "none" };
+    recipeInfo.madeFrom = "first_daily_read: nothing code can read";
+  }
+  snapshot.recipe = recipeInfo;
   // Where the numbers live, for the sync to go straight there next time.
   // A portal that gave nothing today is still where the numbers live.
   snapshot.portal = portalFor(learned ?? (portalMissed && walkedKind && knownPortal?.kind === walkedKind ? knownPortal : null));

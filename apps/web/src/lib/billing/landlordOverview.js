@@ -153,8 +153,14 @@ async function pendingAmendmentUsers(db, ids) {
  * covered addresses that have changed since they were signed for.
  */
 // `signer`: the account's authorized signer ({ name }) when someone else holds its agreement (Project B).
-export function coverageSummary({ offerings = [], coverageRows = [], state, signer = null }) {
-  const covered = coveredMap(coverageRows, { master: state.signed, masterValid: state.valid });
+// `listingSigners`: Map listingId -> { name, state } for listings with their own
+// signer (Wyatt, 2026-11-25): those are covered by that signer's agreement.
+export function coverageSummary({ offerings = [], coverageRows = [], state, signer = null, listingSigners = new Map() }) {
+  const covered = coveredMap(coverageRows.filter((r) => !listingSigners.has(r.listing_id)), { master: state.signed, masterValid: state.valid });
+  for (const [listingId, ls] of listingSigners) {
+    const theirs = coverageRows.filter((r) => r.listing_id === listingId);
+    for (const [id, row] of coveredMap(theirs, { master: ls.state.signed, masterValid: ls.state.valid })) covered.set(id, row);
+  }
   const byListing = new Map();
   for (const o of offerings) {
     const entry = byListing.get(o.listingId) ?? { listingId: o.listingId, address: o.address, offerings: 0, units: new Set() };
@@ -174,8 +180,8 @@ export function coverageSummary({ offerings = [], coverageRows = [], state, sign
     .map(([listingId, row]) => ({
       listingId,
       address: byListing.get(listingId)?.address ?? row.address,
-      via: signer ? "authorized_signer" : "own",
-      signerName: signer?.name ?? state.signed?.signer_name ?? null,
+      via: listingSigners.has(listingId) || signer ? "authorized_signer" : "own",
+      signerName: listingSigners.get(listingId)?.name ?? signer?.name ?? state.signed?.signer_name ?? null,
       document: row.amendment_id ? "addendum" : "agreement",
       coveredAt: row.covered_at ?? null,
     }))
@@ -371,14 +377,27 @@ export async function loadLandlordOverview(db, { filter = "all", search = "", no
   // Who pays for whom (Project B): an account with a payer is judged on the payer's
   // agreement and payment method, and is never asked to sign itself.
   const payerLinks = await inChunks(ids, async (chunk) => {
-    const { data, error } = await db.from("billing_payers").select("landlord_id, payer_id, signer_name, signer_email, declined_at").in("landlord_id", chunk).eq("status", "active").is("listing_id", null);
+    const { data, error } = await db.from("billing_payers").select("id, landlord_id, payer_id, listing_id, role, signer_name, signer_email, declined_at, accepted_at").in("landlord_id", chunk).eq("status", "active");
     if (missingSchema(error)) return [];
     if (error) throw error;
     return data;
   });
-  const payerOf = new Map(payerLinks.map((p) => [p.landlord_id, p]));
+  const signerLinks = payerLinks.filter((p) => (p.role ?? "signer") === "signer");
+  const payerRoleLinks = payerLinks.filter((p) => p.role === "payer");
+  const payerOf = new Map(signerLinks.filter((p) => !p.listing_id).map((p) => [p.landlord_id, p]));
+  // Listings with their own signer, and authorized payers (Wyatt, 2026-11-25): landlordId -> [link].
+  const listingLinksOf = groupBy(signerLinks.filter((p) => p.listing_id), "landlord_id");
+  const payersOf = groupBy(payerRoleLinks, "landlord_id");
+  const linkedListingIds = [...new Set(payerLinks.map((p) => p.listing_id).filter(Boolean))];
+  const listingAddress = new Map();
+  for (let i = 0; i < linkedListingIds.length; i += 200) {
+    const { data, error } = await db.from("listings").select("id, address, city, state, zipcode").in("id", linkedListingIds.slice(i, i + 200));
+    if (error) throw error;
+    for (const b of data ?? []) listingAddress.set(b.id, displayAddress(b));
+  }
+  // How many accounts each person signs or pays for (all of one, or some of its listings).
   const paysFor = new Map();
-  for (const p of payerLinks) paysFor.set(p.payer_id, (paysFor.get(p.payer_id) ?? 0) + 1);
+  for (const [personId, accounts] of payerLinks.reduce((m, p) => m.set(p.payer_id, (m.get(p.payer_id) ?? new Set()).add(p.landlord_id)), new Map())) paysFor.set(personId, accounts.size);
   const licenses = await disclosuresFor(db, ids);
   const printedFor = await paperAccounts(
     db,
@@ -390,8 +409,16 @@ export async function loadLandlordOverview(db, { filter = "all", search = "", no
     const holder = payer?.payer_id ?? l.id;
     // The version this landlord signs: their own when one is live, else the standard one.
     const state = summarizeAgreementRows(agreements.get(holder) ?? [], { liveVersion: ownVersions.get(holder) ?? liveVersion, cutoff, now });
-    const coverage = coverageSummary({ offerings: offerings.get(l.id), coverageRows: covRows.get(l.id), state, signer: payer ? { name: payer.signer_name } : null });
-    const payment = paymentSummary(methods.get(holder), now);
+    const listingSigners = new Map(
+      (listingLinksOf.get(l.id) ?? []).map((b) => [
+        b.listing_id,
+        { name: b.signer_name, state: summarizeAgreementRows(agreements.get(b.payer_id) ?? [], { liveVersion: ownVersions.get(b.payer_id) ?? liveVersion, cutoff, now }) },
+      ])
+    );
+    const coverage = coverageSummary({ offerings: offerings.get(l.id), coverageRows: covRows.get(l.id), state, signer: payer ? { name: payer.signer_name } : null, listingSigners });
+    // The payment method that counts: the account's accepted payer's, else the signer's, else their own.
+    const accountPayer = (payersOf.get(l.id) ?? []).find((p) => !p.listing_id) ?? null;
+    const payment = paymentSummary(methods.get(accountPayer?.accepted_at ? accountPayer.payer_id : holder), now);
     const invoice = invoiceSummary(invoices.get(l.id));
     const publishing = gateDecision({
       role: "landlord",
@@ -424,6 +451,10 @@ export async function loadLandlordOverview(db, { filter = "all", search = "", no
       payer: payer ? { id: payer.payer_id, name: payer.signer_name, email: payer.signer_email, declined: !!payer.declined_at } : null,
       paysForCount: paysFor.get(l.id) ?? 0,
       billingOnly: l.billing_only === true,
+      // Listings with their own authorized signer (Wyatt, 2026-11-25).
+      listingSigners: (listingLinksOf.get(l.id) ?? []).map((b) => ({ linkId: b.id, listingId: b.listing_id, address: listingAddress.get(b.listing_id) ?? "Listing", name: b.signer_name, email: b.signer_email, declined: !!b.declined_at })),
+      // Authorized payers: the account's (listingId null) and each listing's own; pending until they accept.
+      authorizedPayers: (payersOf.get(l.id) ?? []).map((b) => ({ linkId: b.id, listingId: b.listing_id ?? null, address: b.listing_id ? listingAddress.get(b.listing_id) ?? "Listing" : null, name: b.signer_name, email: b.signer_email, status: b.accepted_at ? "accepted" : "pending" })),
     };
   });
 

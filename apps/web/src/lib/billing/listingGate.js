@@ -47,7 +47,7 @@ import { getBillingSetting } from "./settings.js";
 import { PAPER_OUT_MESSAGE, agreementState, coverageFor, isPaperOut } from "./agreements.js";
 import { displayAddress, resolvePublishedIds, uncoveredAmong, unitLabel } from "./coverage.js";
 import { hasActivePaymentMethod } from "./paymentMethodState.js";
-import { activePayerLink } from "./payerLinks.js";
+import { billedTo, billingLinksFor, linkForListing } from "./payerLinks.js";
 
 export const PAYMENT_METHOD_REQUIRED = "payment_method_required";
 export const AGREEMENT_REQUIRED = "agreement_required";
@@ -111,37 +111,92 @@ export function draftedMessage(missing, uncovered = [], { signerName = null } = 
 // The body a route returns when the gate says no. `uncovered` lets the page open
 // the signing dialog for exactly those properties.
 export function gateResponseBody(gate) {
+  // Who each uncovered property waits on (Wyatt, 2026-11-25): its signer
+  // (`signerName`), or the landlord themselves. A batch can have both.
+  const theirs = (gate.uncovered ?? []).filter((u) => u.signerName);
+  const mine = (gate.uncovered ?? []).filter((u) => !u.signerName);
+  const signerNames = [...new Set(theirs.map((u) => u.signerName))];
+  // A payment method someone else has to add: the authorized payer, or the signer who pays.
+  const methodNames = joinNames((gate.methodWaitsOn ?? []).map((w) => w.name).filter(Boolean));
   // A paper copy out (the landlord's or their signer's): no popup, no request to the signer.
-  if (gate.payer && !gate.missing.includes("paper_agreement")) {
+  // (Not when the landlord's own payment method is what is missing: that is theirs to add.)
+  // Nor when everything uncovered is the landlord's own to sign: that is the plain case below.
+  if (gate.payer && !gate.missing.includes("paper_agreement") && !gate.ownMethodMissing && (theirs.length || !mine.length)) {
     const waits = payerCanFix(gate.missing);
+    // Covered already and only a payment method is missing: say whose.
+    const methodOnly = waits && !gate.missing.includes("agreement") && gate.methodWaitsOn?.length;
+    const names = signerNames.length ? joinNames(signerNames) : gate.payer.name;
+    const agreements = signerNames.length > 1 ? `the agreements of ${names}` : `${names}'s agreement`;
     return {
-      error: waits
-        ? `This needs to be added to ${gate.payer.name}'s agreement before it goes live. Your draft is saved.`
-        : gateMessage(gate.missing.filter((m) => m === "overdue_invoice"), []),
+      error: methodOnly
+        ? `This goes live once ${methodNames} adds a payment method. Your draft is saved.`
+        : waits
+          ? mine.length
+            ? `Some of these need to be added to ${agreements}, and the rest to your own, before they go live. Your drafts are saved.`
+            : `This needs to be added to ${agreements} before it goes live. Your draft is saved.`
+          : gateMessage(gate.missing.filter((m) => m === "overdue_invoice"), []),
       code: "billing_setup_required",
       missing: gate.missing,
       // Covered but waiting on the payer's payment method: the listings themselves.
-      uncovered: gate.uncovered?.length ? gate.uncovered : (gate.targets ?? []).map((listingId) => ({ listingId, address: "This listing" })),
+      // Each says who signs for it (`signerName`; null: the landlord), so the page
+      // sends each signer their own and opens signing for the rest (Wyatt, 2026-11-25).
+      uncovered: gate.uncovered?.length ? gate.uncovered : (gate.targets ?? []).map((listingId) => ({ listingId, address: "This listing", signerName: gate.signerNameOf?.[listingId] ?? gate.payer.name })),
       payer: gate.payer,
-      drafted: waits ? `Saved as a draft. Once ${gate.payer.name} approves it, you can publish it.` : draftedMessage(gate.missing, gate.uncovered ?? []),
+      drafted: methodOnly
+        ? `Saved as a draft. Once ${methodNames} adds a payment method, you can publish it.`
+        : waits
+          ? mine.length
+            ? `Saved as drafts. Sign for your own, and once ${names} ${signerNames.length > 1 ? "approve" : "approves"} the rest you can publish them.`
+            : `Saved as a draft. Once ${names} ${signerNames.length > 1 ? "approve" : "approves"} it, you can publish it.`
+          : draftedMessage(gate.missing, gate.uncovered ?? []),
     };
   }
-  const who = { signerName: gate.payer?.name ?? null };
+  // The paper copy's signer, when it is not the landlord's own that is out.
+  const who = { signerName: gate.missing.includes("paper_agreement") ? (gate.paperSignerName !== undefined ? gate.paperSignerName : gate.payer?.name ?? null) : null };
+  // The payment method is someone else's to add (the authorized payer of a
+  // landlord who signs for themselves): say whose, never "add your own".
+  if (methodNames && !gate.ownMethodMissing && gate.missing.includes("payment_method") && !gate.missing.includes("paper_agreement")) {
+    const rest = gate.missing.filter((m) => m !== "payment_method");
+    const wait = `${methodNames} needs to add a payment method before this can go live: they are invoiced for it.`;
+    return {
+      error: rest.length ? `${wait} ${gateMessage(rest, gate.uncovered ?? [], who).replace("Before you can publish a listing you need to", "You also need to")}` : `${wait} Your draft is saved.`,
+      code: "billing_setup_required",
+      missing: gate.missing,
+      uncovered: gate.uncovered ?? [],
+      methodWaitsOn: methodNames,
+      drafted: rest.length ? `${draftedMessage(rest, gate.uncovered ?? [], who)} ${wait}` : `Saved as a draft. ${wait}`,
+    };
+  }
   return {
     error: gateMessage(gate.missing, gate.uncovered ?? [], who),
     code: "billing_setup_required",
     missing: gate.missing,
     uncovered: gate.uncovered ?? [],
+    ...(gate.ready?.length && { ready: gate.ready }),
     drafted: draftedMessage(gate.missing, gate.uncovered ?? [], who),
   };
 }
+
+/*
+ * Whose payment method publishing waits on, when it is not the landlord's own to
+ * add (their authorized payer, or the signer who pays): the names as one phrase,
+ * or null. The Billing checklist shows it instead of "add a payment method".
+ */
+export const methodWaitNames = (gate) =>
+  gate?.missing?.includes("payment_method") && !gate.ownMethodMissing ? joinNames((gate.methodWaitsOn ?? []).map((w) => w.name).filter(Boolean)) || null : null;
+
+// "Ada", "Ada and Olive", "Ada, Olive and Sam".
+const joinNames = (names) => {
+  const list = [...new Set(names)];
+  return list.length > 1 ? `${list.slice(0, -1).join(", ")} and ${list.at(-1)}` : list[0] ?? "";
+};
 
 // With a payer, a missing agreement or payment method is the payer's to fix: the
 // listing waits for them. An overdue invoice still blocks outright.
 export const payerCanFix = (missing = []) => missing.length > 0 && missing.every((m) => m === "agreement" || m === "payment_method");
 
 // Whether signing (or, with a payer, sending to the payer) is all that stands in the way.
-export const coverageOnly = (gate) => (gate.payer ? payerCanFix(gate.missing) : gate.missing.length === 1 && gate.missing[0] === "agreement");
+export const coverageOnly = (gate) => (gate.payer && !gate.ownMethodMissing ? payerCanFix(gate.missing) : gate.missing.length === 1 && gate.missing[0] === "agreement");
 
 async function userOf(db, userId) {
   const { data, error } = await db
@@ -225,6 +280,9 @@ export async function getGateSettings(db) {
  *                units, each needs an addendum (review of 2026-11-07)
  *   newProperty  a property that does not exist yet (add listing): never covered
  *   neither      the dashboard's question: does the landlord's master count?
+ *
+ * When the refusal is about particular properties, `blocked` lists them (the
+ * ids that will be live), so a batch publish can put the others live.
  */
 export async function checkListingGate(db, userId, { listingIds = null, unitIds = [], newUnits = [], newProperty = false, now = new Date() } = {}) {
   const { role, sandbox } = await userOf(db, userId);
@@ -232,28 +290,51 @@ export async function checkListingGate(db, userId, { listingIds = null, unitIds 
     return { ...gateDecision({ role, sandbox }), requirePaymentMethod: false, requireAgreement: false, uncovered: [] };
   }
 
-  const [settings, overdueInvoice, payerLink] = await Promise.all([getGateSettings(db), hasOverdueInvoice(db, userId), activePayerLink(db, userId)]);
+  const [settings, overdueInvoice, links] = await Promise.all([getGateSettings(db), hasOverdueInvoice(db, userId), billingLinksFor(db, userId)]);
+  // Who signs and who is invoiced for each property being published (Wyatt,
+  // 2026-11-25). Signing: its own signer, else the account's, else the landlord.
+  // Invoiced: its authorized payer, else whoever signs. A new property (no
+  // listing yet) and the dashboard's question read the account's.
+  const targets = listingIds?.length ? await resolvePublishedIds(db, listingIds) : [];
+  const scope = targets.length ? targets : [null];
+  const signerOf = new Map(scope.map((id) => [id, linkForListing(links.signers, id)]));
   let hasPaymentMethod = true;
+  // Whose payment method is missing: the landlord's own, or someone else's to add.
+  const methodWaitsOn = [];
+  // The properties held back by a missing payment method (of whoever is invoiced for each).
+  const methodBlocked = new Set();
   if (settings.requirePaymentMethod) {
-    // The payer's payment method counts for an account they pay for.
+    const billed = new Map(scope.map((id) => [id, billedTo({ landlordId: userId, listingId: id, ...links })]));
+    const ids = [...new Set([...billed.values()].map((b) => b.userId))];
+    // The method of whoever is invoiced counts, never the landlord's in their place.
     const { data, error } = await db
       .from("payment_methods")
-      .select("status, type, exp_month, exp_year, deleted_at")
-      .eq("user_id", payerLink?.payer_id ?? userId)
+      .select("user_id, status, type, exp_month, exp_year, deleted_at")
+      .in("user_id", ids)
       .is("deleted_at", null);
     if (error) throw error;
-    hasPaymentMethod = hasActivePaymentMethod(data, now);
+    const has = new Map(ids.map((id) => [id, hasActivePaymentMethod((data ?? []).filter((m) => m.user_id === id), now)]));
+    hasPaymentMethod = ids.every((id) => has.get(id));
+    for (const [id, b] of billed) if (id && !has.get(b.userId)) methodBlocked.add(id);
+    for (const b of new Map([...billed.values()].map((x) => [x.userId, x])).values()) if (!has.get(b.userId)) methodWaitsOn.push({ userId: b.userId, name: b.name, via: b.via });
   }
+  // The signers these properties go to. Several (or some the landlord's own) are
+  // never refused: each signer gets their own request for what they hold, and the
+  // landlord signs for the rest (Wyatt, 2026-11-25).
+  const signerLinks = [...new Map([...signerOf.values()].filter(Boolean).map((l) => [l.payer_id, l])).values()];
+  const ownTargets = scope.filter((id) => !signerOf.get(id));
+  const payerLink = signerLinks[0] ?? null;
   let agreementSigned = true;
   let uncovered = [];
   // A paper copy out for signature: nothing to sign in the app, so the publish is
   // refused with that said instead of opening the signing popup (Wyatt, 2026-11-17).
   let paperOut = false;
+  // Whose paper copy it is: their name, or null for the landlord's own.
+  let paperSignerName;
   if (settings.requireAgreement) {
     if (listingIds?.length || newProperty) {
       const ids = await resolvePublishedIds(db, listingIds ?? []);
-      const { state, properties, covered } = await coverageFor(db, userId, now);
-      paperOut = isPaperOut(state);
+      const { state, properties, covered, holderOf } = await coverageFor(db, userId, now);
       let extraUnits = null;
       if (unitIds?.length) {
         const { data: units, error: unitError } = await db
@@ -284,6 +365,23 @@ export async function checkListingGate(db, userId, { listingIds = null, unitIds 
       }
       if (newProperty) uncovered.push({ listingId: null, address: "New property" });
       agreementSigned = uncovered.length === 0;
+      // A paper copy holds a property only when it is out for whoever signs for
+      // THAT property (Wyatt, 2026-11-25): the landlord's own copy on paper does
+      // not hold a listing that has its own signer, nor the other way round.
+      // With several holders, it holds the publish only when every one is on paper.
+      if (uncovered.length) {
+        const holders = [...new Set(uncovered.map((u) => (u.listingId ? holderOf(u.listingId) : state.holderId ?? userId)))];
+        const out = [];
+        for (const h of holders) {
+          const st = h === (state.holderId ?? userId) ? state : await agreementState(db, userId, now, h === userId ? { own: true } : { holderId: h });
+          out.push(isPaperOut(st));
+        }
+        paperOut = out.every(Boolean);
+        if (paperOut) {
+          const first = uncovered[0];
+          paperSignerName = first.listingId ? linkForListing(links.signers, first.listingId)?.signer_name ?? null : links.signers.account?.signer_name ?? null;
+        }
+      }
     } else {
       // Signed, in its term, and on a version that still counts.
       const state = await agreementState(db, userId, now);
@@ -292,17 +390,40 @@ export async function checkListingGate(db, userId, { listingIds = null, unitIds 
     }
   }
 
+  // Who signs for each uncovered property: its signer's name, or null (the landlord).
+  const signerNameFor = (listingId) => (signerOf.get(listingId ?? null) ?? (listingId ? linkForListing(links.signers, listingId) : links.signers.account))?.signer_name ?? null;
+  if (signerLinks.length) uncovered = uncovered.map((u) => ({ ...u, signerName: signerNameFor(u.listingId) }));
   const decision = gateDecision({ role, ...settings, hasPaymentMethod, agreementSigned, overdueInvoice });
   if (paperOut) decision.missing = decision.missing.map((m) => (m === "agreement" ? "paper_agreement" : m));
+  // The properties held back, by coverage or by a payment method, when the
+  // refusal is about particular properties and not the whole account. A batch
+  // publish can then put the others live and leave these as drafts (Wyatt,
+  // 2026-11-25, api/landlord/publish `partial`).
+  const blocked =
+    !decision.allowed && !overdueInvoice && !newProperty && !paperOut && !uncovered.some((u) => !u.listingId)
+      ? [...new Set([...uncovered.map((u) => u.listingId), ...methodBlocked])]
+      : null;
   return {
     ...decision,
     ...settings,
     uncovered,
+    ...(blocked && { blocked }),
+    ...(paperOut && paperSignerName !== undefined && { paperSignerName }),
     ...(payerLink && {
-      payer: { name: payerLink.signer_name },
-      // What would wait for the payer: the properties being published.
-      targets: listingIds?.length ? await resolvePublishedIds(db, listingIds) : [],
+      // The signer these go to; with several, the first, and `signers` has each
+      // with the properties that are theirs.
+      payer: { name: signerLinks.length === 1 ? payerLink.signer_name : `${signerLinks.length} authorized signers` },
+      signers: signerLinks.map((l) => ({ name: l.signer_name, listingIds: targets.filter((id) => signerOf.get(id)?.payer_id === l.payer_id) })),
+      // What would wait for a signer: the properties being published that one holds.
+      targets: targets.filter((id) => signerOf.get(id)),
+      // Published in the same go, but the landlord's own to sign for.
+      ownTargets: ownTargets.filter(Boolean),
     }),
+    ...(payerLink && { signerNameOf: Object.fromEntries(targets.filter((id) => signerOf.get(id)).map((id) => [id, signerOf.get(id).signer_name])) }),
+    // A payment method someone else has to add (the authorized payer, or the signer who pays).
+    ...(methodWaitsOn.some((w) => w.via !== "landlord") && { methodWaitsOn: methodWaitsOn.filter((w) => w.via !== "landlord") }),
+    // The landlord's own payment method is missing: theirs to add, nobody else's.
+    ...(methodWaitsOn.some((w) => w.via === "landlord") && { ownMethodMissing: true }),
   };
 }
 
