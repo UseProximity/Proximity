@@ -1,7 +1,7 @@
 {
   "_description": "All React components in the Proximity app. Update COMPONENT_DESCRIPTIONS in generate-knowledge.mjs when adding new components.",
-  "_generated": "2026-11-26T20:59:08.449Z",
-  "count": 236,
+  "_generated": "2026-11-27T00:47:27.356Z",
+  "count": 237,
   "components": [
     {
       "name": "ErrorReporter",
@@ -956,6 +956,11 @@
     {
       "name": "AddListingWizard",
       "file": "src/components/listings/wizard/AddListingWizard.js",
+      "description": "No description. Run generate after adding a description above."
+    },
+    {
+      "name": "HandOverDrafts",
+      "file": "src/components/listings/wizard/HandOverDrafts.js",
       "description": "No description. Run generate after adding a description above."
     },
     {
