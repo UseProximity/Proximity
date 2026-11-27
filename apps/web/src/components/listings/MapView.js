@@ -13,7 +13,6 @@
 import { useEffect, useRef, useState, useMemo, useCallback } from "react";
 import mapboxgl from "mapbox-gl";
 import "mapbox-gl/dist/mapbox-gl.css";
-import { useRouter } from "next/navigation";
 import { SHUTTLE_STOPS } from "@/utils/washuPlaces";
 import MapErrorBoundary from "@/components/listings/MapErrorBoundary";
 
@@ -202,7 +201,6 @@ function MapViewInner({
   // hidden). It has no size then, so it does no pin or camera work, and picks up
   // where it left off, with the current listings and selection, when shown.
   paused = false,
-  heroMode = false,
   onBrowseArea = null,
   panelExpanded = false,
   // Ticks each time the listings column finishes its width slide.
@@ -211,7 +209,6 @@ function MapViewInner({
   // a gold badge so the strip can be found on the map.
   suggestedIds = null,
 }) {
-  const router = useRouter();
   const mapContainerRef = useRef(null);
   const mapRef = useRef(null);
   // Set by a pin click, read when the panel next opens or closes: a close
@@ -230,7 +227,6 @@ function MapViewInner({
   // selectedListingId effect (which runs after, in definition order) can
   // read it and skip its own flyTo.
   const panelIsTransitioningRef = useRef(false);
-  const [showExplore, setShowExplore] = useState(false);
   const [showBrowseButton, setShowBrowseButton] = useState(false);
   const [showShuttleStops, setShowShuttleStops] = useState(false);
   const [hideUnavailable, setHideUnavailable] = useState(false);
@@ -381,12 +377,10 @@ function MapViewInner({
         center: [-90.3035, 38.6495],
         zoom: 15.5,
       });
-      if (!heroMode) {
-        mapRef.current.addControl(new mapboxgl.NavigationControl());
-      }
+      mapRef.current.addControl(new mapboxgl.NavigationControl());
 
       // Show "Browse this area" button on user-initiated map movement
-      if (!heroMode && onBrowseArea) {
+      if (onBrowseArea) {
         mapRef.current.on("movestart", (e) => {
           if (e.originalEvent) setShowBrowseButton(true);
         });
@@ -404,20 +398,11 @@ function MapViewInner({
       mapRef.current.getCanvasContainer().classList.add("isolate");
     }
 
-    if (!heroMode) {
-      // Expose route helpers (only for the active/visible map)
-      window.showRouteToCampus = showRouteToCampus;
-      window.hideRoute = hideRoute;
-    }
+    // Expose route helpers (only for the active/visible map)
+    window.showRouteToCampus = showRouteToCampus;
+    window.hideRoute = hideRoute;
 
-    // Hero mode: show Explore button on first user interaction
     const container = mapContainerRef.current;
-    const onUserInput = heroMode ? () => setShowExplore(true) : null;
-    if (heroMode && onUserInput) {
-      container.addEventListener("mousedown", onUserInput, { once: true });
-      container.addEventListener("touchstart", onUserInput, { once: true });
-      container.addEventListener("wheel", onUserInput, { once: true });
-    }
 
     // Mapbox resizes itself on window resize, but not when the container
     // changes size on its own (the browse panel opening or closing), which can
@@ -439,14 +424,8 @@ function MapViewInner({
     resizeObserver?.observe(container);
 
     return () => {
-      if (!heroMode) {
-        delete window.showRouteToCampus;
-        delete window.hideRoute;
-      } else if (onUserInput) {
-        container.removeEventListener("mousedown", onUserInput);
-        container.removeEventListener("touchstart", onUserInput);
-        container.removeEventListener("wheel", onUserInput);
-      }
+      delete window.showRouteToCampus;
+      delete window.hideRoute;
 
       resizeObserver?.disconnect();
       if (resizeFrame != null) cancelAnimationFrame(resizeFrame);
@@ -458,7 +437,7 @@ function MapViewInner({
         mapRef.current = null;
       }
     };
-  }, [isActive, heroMode, showRouteToCampus, hideRoute]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [isActive, showRouteToCampus, hideRoute]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Builds a flat pin element for one listing (Figma design).
   // rating: exact float (e.g. 3.7) or null; a rated pin shows a star filled
@@ -1023,31 +1002,27 @@ function MapViewInner({
   return (
     <div className="relative w-full h-full">
       <div ref={mapContainerRef} className="w-full h-full" />
-      {!heroMode && (
+      <button
+        onClick={() => setHideUnavailable((hidden) => !hidden)}
+        className="absolute top-5 left-[72px] md:top-3 md:left-3 z-10 px-2.5 py-1.5 text-[11px] font-medium rounded-full shadow border bg-white text-gray-700 border-gray-200 hover:bg-gray-50 transition-colors"
+      >
+        {hideUnavailable
+          ? "Show Unavailable Housing"
+          : "Hide Unavailable Housing"}
+      </button>
+      <div className="absolute bottom-8 right-3 z-10 flex flex-col gap-1.5">
         <button
-          onClick={() => setHideUnavailable((hidden) => !hidden)}
-          className="absolute top-5 left-[72px] md:top-3 md:left-3 z-10 px-2.5 py-1.5 text-[11px] font-medium rounded-full shadow border bg-white text-gray-700 border-gray-200 hover:bg-gray-50 transition-colors"
+          onClick={handleToggleShuttleStops}
+          className={`px-2.5 py-1.5 text-[11px] font-medium rounded-full shadow border transition-colors ${
+            showShuttleStops
+              ? "bg-teal-500 text-white border-teal-500"
+              : "bg-white text-gray-700 border-gray-200 hover:bg-gray-50"
+          }`}
         >
-          {hideUnavailable
-            ? "Show Unavailable Housing"
-            : "Hide Unavailable Housing"}
+          {showShuttleStops ? "Hide Shuttle stops" : "Show Shuttle stops"}
         </button>
-      )}
-      {!heroMode && (
-        <div className="absolute bottom-8 right-3 z-10 flex flex-col gap-1.5">
-          <button
-            onClick={handleToggleShuttleStops}
-            className={`px-2.5 py-1.5 text-[11px] font-medium rounded-full shadow border transition-colors ${
-              showShuttleStops
-                ? "bg-teal-500 text-white border-teal-500"
-                : "bg-white text-gray-700 border-gray-200 hover:bg-gray-50"
-            }`}
-          >
-            {showShuttleStops ? "Hide Shuttle stops" : "Show Shuttle stops"}
-          </button>
-        </div>
-      )}
-      {!heroMode && onBrowseArea && (
+      </div>
+      {onBrowseArea && (
         <div
           // With a listing open the map is only 42vw wide: below 1200px the
           // button goes under the Hide / Show Unavailable one rather than on it.
@@ -1071,25 +1046,6 @@ function MapViewInner({
             className="px-4 py-2 bg-white text-gray-800 font-semibold text-xs rounded-full shadow-md border border-gray-200 hover:bg-gray-50 transition-colors"
           >
             Browse this area
-          </button>
-        </div>
-      )}
-      {heroMode && (
-        <div
-          className="absolute bottom-8 left-1/2 -translate-x-1/2 z-40 transition-all duration-300"
-          style={{
-            opacity: showExplore ? 1 : 0,
-            transform: `translateX(-50%) translateY(${
-              showExplore ? "0" : "12px"
-            })`,
-            pointerEvents: showExplore ? "auto" : "none",
-          }}
-        >
-          <button
-            onClick={() => router.push("/browse")}
-            className="px-6 py-3 bg-white text-gray-900 font-semibold text-sm rounded-full shadow-lg border border-gray-200 hover:bg-gray-50 hover:shadow-xl transition-all duration-150"
-          >
-            Explore Map
           </button>
         </div>
       )}

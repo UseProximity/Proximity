@@ -195,12 +195,64 @@ function Message({ m, sender, isLandlord, visitor = null }) {
           ))}
         </ul>
       )}
+      {m.listingUpdate && <ListingUpdateNote u={m.listingUpdate} />}
       {flagged && (
         <div className="mt-1.5 flex items-center gap-1.5 flex-wrap">
           <FlagBadges reasons={reasons} />
           {m.flags.every((f) => f.reviewedAt) && <span className="text-[10px] text-gray-400">reviewed</span>}
         </div>
       )}
+    </div>
+  );
+}
+
+const UPDATE_SKIPS = {
+  this_student_only: "true for this student only",
+  other_property: "about another property",
+  "unclear which offering": "unclear which offering",
+  "already matches the listing": "listing already says this",
+  "quote not found in the message": "could not tie it to the message's words",
+  "could not read the message": "could not read the message",
+  "not sure enough": "confidence too low",
+  "generic: the message does not name the property": "generic, does not name the property",
+  "confidence check could not run": "confidence check could not run",
+  "only offerings for a later move-in, which a statement about now does not reach": "a statement about now does not reach next year's offerings",
+  "a move-in date in the past": "the move-in date read is in the past",
+  "the new rent is too far from the saved rent to tell whether it is per person or for the unit": "new rent too far from the saved one to tell per person from whole unit",
+};
+
+/* What a landlord's message changed on the listing, or would have (lib/agents/chatListingUpdates.js). */
+function ListingUpdateNote({ u }) {
+  const pct = (n) => `${Math.round(Number(n) * 100)}%`;
+  // Older dry-run records kept plain labels.
+  const rows = (u.changes ?? []).map((c) => (typeof c === "string" ? { label: c } : c));
+  const applied = rows.some((c) => c.applied);
+  const would = rows.some((c) => c.apply || (u.mode === "dry_run" && c.apply == null));
+  // Sure enough, but the change itself failed (the billing gate, a save error).
+  const failed = !applied && rows.some((c) => c.apply && c.error);
+  const title = applied ? "Updated the listing" : failed ? "Could not apply" : would && u.mode === "dry_run" ? "Would update listing" : rows.length ? "Not sure enough to change" : "Listing not changed";
+  const tone = failed ? "border-amber-200 bg-amber-50 text-amber-900" : applied || would ? "border-emerald-200 bg-emerald-50 text-emerald-900" : "border-gray-200 bg-gray-50 text-gray-600";
+  return (
+    <div className={`mt-1.5 rounded border px-2 py-1.5 text-xs ${tone}`}>
+      <div className="flex items-center gap-1.5 flex-wrap">
+        <Badge color={failed ? "amber" : applied || would ? "green" : "gray"}>{title}</Badge>
+        {u.mode === "dry_run" && <span className="text-[10px] text-gray-500">dry run, nothing changed</span>}
+        {u.skipped && <span>{UPDATE_SKIPS[u.skipped] ?? u.skipped}</span>}
+      </div>
+      {rows.length > 0 && (
+        <ul className="mt-1 list-disc pl-4">
+          {rows.map((c, i) => (
+            <li key={i}>
+              {c.label}
+              {c.score != null && <span className="text-gray-500"> · confidence {pct(c.score)}{u.bar ? ` of ${pct(u.bar)} needed` : ""}</span>}
+              {c.applied && <span className="font-medium"> · done</span>}
+              {c.error && <span className="text-red-700"> · not applied: {c.error}</span>}
+            </li>
+          ))}
+        </ul>
+      )}
+      {u.quote && <p className="mt-1 italic">&ldquo;{u.quote}&rdquo;</p>}
+      {u.reason && <p className="mt-0.5 text-gray-500">{u.reason}</p>}
     </div>
   );
 }

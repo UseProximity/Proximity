@@ -75,7 +75,7 @@ export async function removeUnitPage({ listingId, unitId }) {
  *
  * Returns { snapshot, pages: [{ unitId, url, status, error }] }.
  */
-export async function mergeUnitPages({ listing, snapshot, onStep = () => {} }) {
+export async function mergeUnitPages({ listing, snapshot, onStep = () => {}, daily = false }) {
   const pages = (await unitPagesFor(listing.id).catch(() => [])).filter((p) => p.enabled);
   if (!pages.length) return { snapshot, pages: [] };
 
@@ -105,8 +105,15 @@ export async function mergeUnitPages({ listing, snapshot, onStep = () => {} }) {
         onlyThisPage: true,
         // The page itself and nothing beyond its site.
         allowUrl: givenSiteFilter([p.url]),
+        // A daily sync reads a unit's page by code only; one code cannot read waits for the weekly read.
+        daily,
         onStep: () => {},
       });
+      if (snap.dailySkipped) {
+        unreadUnitIds.push(db.id);
+        results.push({ unitId: db.id, unit: unitLabel(db), url: p.url, status: "skipped", error: null });
+        continue;
+      }
       const units = snap.units ?? [];
       // The page's unit: the only one, else whichever pairs with this unit.
       if (units.length === 1) found = units[0];

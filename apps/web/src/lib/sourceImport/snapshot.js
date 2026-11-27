@@ -178,7 +178,11 @@ export function consolidateOffers(raw = []) {
         // plan.
         dateStated: raw !== null || o.availableNow === true,
         rentExact: o.rentIsExact !== false,
+        // A starting price taken as the price because one unit is left.
+        rentOnlyUnit: o.onlyUnit === true,
         termsInferred: o.termsInferred === true,
+        // ...and the length was the one a starting-at price was put on (read.js startingAtTerm).
+        termFromStartingAt: o.termFromStartingAt === true,
       });
       continue;
     }
@@ -188,7 +192,9 @@ export function consolidateOffers(raw = []) {
     g.availableNow = g.availableNow || o.availableNow === true;
     g.dateStated = g.dateStated || raw !== null || o.availableNow === true;
     g.rentExact = g.rentExact && o.rentIsExact !== false;
+    g.rentOnlyUnit = g.rentOnlyUnit && o.onlyUnit === true;
     g.termsInferred = g.termsInferred || o.termsInferred === true;
+    g.termFromStartingAt = g.termFromStartingAt && o.termFromStartingAt === true;
     if (date === null) g.availableFrom = null;
     else if (g.availableFrom !== null && date < g.availableFrom) g.availableFrom = date;
   }
@@ -224,6 +230,13 @@ export function cleanUnit(unit) {
   };
   // Read by the model from page text rather than from a feed or portal.
   if (unit.fromModel === true) cleaned.fromModel = true;
+  // Which reader: a recipe replayed by code, the pattern parser, or (absent) the model.
+  if (unit.readBy === "recipe" || unit.readBy === "pattern") cleaned.readBy = unit.readBy;
+  // A name a recipe took for a new unit, unconfirmed by any model read (recipe.js).
+  if (unit.recipeAdded === true) cleaned.recipeAdded = true;
+  // Other names the plan goes by (two sources' names merged): pairing only.
+  const aka = (unit.aka ?? []).filter((n) => typeof n === "string" && n.trim()).map((n) => n.trim().slice(0, 80));
+  if (aka.length) cleaned.aka = [...new Set(aka)];
   cleaned.key = unit.key ?? unitKey(cleaned);
   return cleaned;
 }
@@ -256,8 +269,11 @@ export function makeSnapshot({
     existing.area ??= u.area;
     existing.floorPlanImageUrl ??= u.floorPlanImageUrl;
     existing.name ??= u.name;
+    if (u.aka) existing.aka = [...new Set([...(existing.aka ?? []), ...u.aka])];
     existing.available = existing.available && u.available;
     if (!u.fromModel) delete existing.fromModel;
+    if (!u.readBy) delete existing.readBy;
+    if (!u.recipeAdded) delete existing.recipeAdded;
     existing.photos = [...new Set([...existing.photos, ...u.photos])];
     existing.offers = consolidateOffers([...existing.offers, ...u.offers]);
   }

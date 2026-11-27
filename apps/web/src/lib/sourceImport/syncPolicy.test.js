@@ -160,3 +160,17 @@ test("a bare floor plan card is not a new home on a listing of apartments", () =
   const plans = [{ name: "Ace", bedrooms: 4, bathrooms: 4 }, { name: "Jack", bedrooms: 4, bathrooms: 4 }];
   assert.equal(bareCoveredPlan(bare("Joker", 4, 4), plans), false);
 });
+
+test("a duplicate or superseded unit's lease is withdrawn even on a partial read; a missed one is not", () => {
+  const base = { kind: "lease_withdrawn", detail: { unitGone: true } };
+  assert.equal(decideSyncChange({ ...base, detail: { unitGone: true, duplicateOf: "u2" } }, partial).apply, true);
+  assert.equal(decideSyncChange({ ...base, detail: { unitGone: true, supersededBy: ["Azure"] } }, partial).apply, true);
+  assert.equal(decideSyncChange(base, partial).apply, false);
+});
+
+test("a new unit only code found waits for the weekly read (PR 483 review)", () => {
+  const v = decide({ kind: "unit_new", detail: { recipeAdded: true } });
+  assert.deepEqual(v, { apply: false, reason: DENY.recipeAdded });
+  // The unit's own page still speaks for it.
+  assert.equal(decide({ kind: "unit_new", detail: { recipeAdded: true, fromUnitPage: true } }).apply, true);
+});

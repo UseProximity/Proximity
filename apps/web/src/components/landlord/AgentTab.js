@@ -304,6 +304,92 @@ function ChangeHistory({ listingId, history, onDone }) {
   );
 }
 
+/*
+ * What the website sync changed on this listing, and what it found but left
+ * alone, each with why. Undo puts an applied change back to what it replaced;
+ * Apply now takes one the sync left. Either is the landlord's own edit, so
+ * the sync does not reverse it while the website still says the same thing.
+ */
+function WebsiteChanges({ listingId, viewAsId = null, readOnly, onDone }) {
+  const [rows, setRows] = useState(null);
+  const [hidden, setHidden] = useState([]);
+  const [busy, setBusy] = useState(null);
+  const [open, setOpen] = useState(false);
+  const load = useCallback(async () => {
+    try {
+      // Viewing as a landlord: what that landlord sees, not the admin's view.
+      const qs = viewAsId ? `?viewAs=${encodeURIComponent(viewAsId)}` : "";
+      const r = await fetch(`/api/landlord/listings/${listingId}/agent/changes${qs}`);
+      const d = await r.json().catch(() => ({}));
+      setRows(r.ok ? d.rows ?? [] : []);
+      setHidden(r.ok ? d.hidden ?? [] : []);
+    } catch { setRows([]); }
+  }, [listingId, viewAsId]);
+  useEffect(() => { load(); }, [load]);
+  if (!rows?.length && !hidden.length) return null;
+  const show = async (h) => {
+    setBusy(h.leaseId);
+    try {
+      await post(`/api/landlord/listings/${listingId}/agent/changes`, { showPrice: h.leaseId });
+      toast.success("Price shown on your listing");
+      await load();
+      onDone();
+    } catch (err) { toast.error(err.message); } finally { setBusy(null); }
+  };
+  const act = async (row, key) => {
+    setBusy(row.id);
+    try {
+      await post(`/api/landlord/listings/${listingId}/agent/changes`, { [key]: row.id });
+      toast.success(key === "undo" ? "Undone. Your listing is back to what it was." : "Applied");
+      await load();
+      onDone();
+    } catch (err) { toast.error(err.message); } finally { setBusy(null); }
+  };
+  const all = rows ?? [];
+  const waiting = all.filter((r) => r.status === "not_applied");
+  const shown = open ? all : all.slice(0, 5);
+  const day = (iso) => new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric" });
+  return (
+    <div className="rounded-xl border border-gray-200 bg-white p-4">
+      <p className="text-sm font-semibold text-gray-900">Changes from your website and messages</p>
+      <p className="mb-3 text-xs text-gray-500">What the daily check of your website changed in the last 30 days, and what it found but did not change{waiting.length ? ` (${waiting.length})` : ""}. When you tell a student in a message that a unit is taken or its rent or move-in date changed, your listing is updated too. You can undo any change or apply one yourself.</p>
+      {hidden.length > 0 && (
+        <div className="mb-3 space-y-2">
+          {hidden.map((h) => (
+            <div key={h.leaseId} className="flex flex-wrap items-center gap-2 rounded-lg border border-blue-100 bg-blue-50 p-3 text-sm text-blue-900">
+              <span className="min-w-0 flex-1">Your website shows <strong>${Math.round(h.rent).toLocaleString("en-US")}{h.perPerson ? " per person" : ""}</strong> for {h.unit}. Your listing shows no price, and it stays that way unless you choose to show it.</span>
+              {!readOnly && <button disabled={busy === h.leaseId} onClick={() => show(h)} className="rounded-lg bg-gray-900 px-3 py-1 text-xs font-semibold text-white disabled:opacity-50">Show this price</button>}
+            </div>
+          ))}
+        </div>
+      )}
+      <ul className="space-y-2">
+        {shown.map((r) => (
+          <li key={r.id} className="rounded-lg border border-gray-100 p-3 text-sm">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-gray-900">{r.change.title}</span>
+              <span className={`rounded px-1.5 py-0.5 text-xs font-medium ${r.status === "applied" ? "bg-emerald-50 text-emerald-700" : r.status === "undone" ? "bg-gray-100 text-gray-600" : "bg-amber-50 text-amber-800"}`}>{r.status === "applied" ? "Changed" : r.status === "undone" ? "Undone" : "Not changed"}</span>
+              <span className="ml-auto text-xs text-gray-500">{day(r.at)}</span>
+            </div>
+            {r.change.rows.map((x) => (
+              <p key={x.label} className="text-xs text-gray-600">{x.label}: {x.before != null && <><span className="line-through">{x.before}</span> to </>}<span className="font-medium text-gray-900">{x.after}</span></p>
+            ))}
+            {r.change.quote && <p className="mt-1 text-xs italic text-gray-600">&ldquo;{r.change.quote}&rdquo;</p>}
+            {r.status === "not_applied" && r.reason && <p className="mt-1 text-xs text-gray-500">Why not: {r.reason}</p>}
+            {!readOnly && (r.canUndo || r.canApply) && (
+              <div className="mt-2 flex gap-2">
+                {r.canApply && <button disabled={busy === r.id} onClick={() => act(r, "applyNow")} className="rounded-lg bg-gray-900 px-3 py-1 text-xs font-semibold text-white disabled:opacity-50">Apply now</button>}
+                {r.canUndo && <button disabled={busy === r.id} onClick={() => act(r, "undo")} className="rounded-lg border border-gray-300 px-3 py-1 text-xs text-gray-700 disabled:opacity-50">Undo</button>}
+              </div>
+            )}
+          </li>
+        ))}
+      </ul>
+      {all.length > 5 && <button onClick={() => setOpen(!open)} className="mt-2 text-xs font-medium text-gray-700 underline">{open ? "Show fewer" : `Show all ${all.length}`}</button>}
+    </div>
+  );
+}
+
 export default function AgentTab({ listingId, viewAsId = null, isDraft = false }) {
   const [data, setData] = useState(null);
   const [error, setError] = useState(null);
@@ -346,6 +432,7 @@ export default function AgentTab({ listingId, viewAsId = null, isDraft = false }
         <SourcesSide listingId={listingId} owner={data.owner} sync={data.sync} sources={data.sources} unitPages={data.unitPages} teamReview={data.teamReview} onChanged={load} />
       </div>
       <HeldChanges listingId={listingId} held={data.held} onDone={load} />
+      <WebsiteChanges listingId={listingId} viewAsId={viewAsId} readOnly={!!viewAsId} onDone={load} />
       <Knowledge listingId={listingId} sections={data.sections} onChanged={load} />
       <ChangeHistory listingId={listingId} history={data.history} onDone={load} />
     </div>

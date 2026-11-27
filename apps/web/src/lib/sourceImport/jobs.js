@@ -17,6 +17,8 @@
  * draft. Its job reads the site the same way and records every difference as
  * an open change for the landlord to accept on that tab.
  */
+import { importHints } from "./hints.js";
+import { loadRecipes, saveMadeRecipe } from "./recipeStore.js";
 import { randomUUID } from "node:crypto";
 import supabase from "@/lib/supabase";
 import { markAlreadyListed } from "./alreadyListed.js";
@@ -463,14 +465,16 @@ export async function runJob(jobId) {
           target: { name: target.name, address: target.address, url: target.url, levelUrl: target.levelUrl },
           onStep,
           knownPortal,
+          // A platform (or this listing's) recipe lets code read the units; the read works a new one out otherwise.
+          recipeFor: (platformKey) => loadRecipes(listing.id, platformKey),
         });
-
-    // Cancelled while the site was being read: write nothing.
+    // Cancelled while the site was being read: write nothing, not even a recipe.
     const { data: still } = await supabase.from("listing_import_jobs").select("status").eq("id", jobId).maybeSingle();
     if (still?.status === "cancelled") {
       console.log(`[source-import] job ${jobId} cancelled during the read; nothing applied`);
       return still;
     }
+    if (!grouped) await saveMadeRecipe({ listingId: listing.id, info: snapshot.recipe });
     await setStep(jobId, "Saving", 82);
     const attached = await attachSourceUrl({ listingId: listing.id, rawUrl: snapshot.sourceUrl, indexUrl: snapshot.indexUrl, userId: job.user_id, portal: snapshot.portal ?? null });
     const monitorId = attached.ok ? await monitorIdFor(listing.id) : null;
@@ -512,7 +516,8 @@ export async function runJob(jobId) {
           confidence: snapshot.confidence,
           sourceUrl: snapshot.sourceUrl,
           summary,
-          notes: snapshot.notes,
+          // Field-by-field hints first (hints.js), then what the read itself noted.
+          notes: mode === "import" ? [...new Set([...importHints(snapshot), ...(snapshot.notes ?? [])])].slice(0, 8) : snapshot.notes,
           applied: result.applied.length,
           held: result.held.length,
           holdReason: result.holdReason,

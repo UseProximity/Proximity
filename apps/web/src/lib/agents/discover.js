@@ -14,7 +14,7 @@
  *     agent already reads (listing_sources kind 'page')
  *   - links in its description
  *   - the contact email's domain, when it is a company's (not gmail etc.)
- *   - web searches (Firecrawl, else Tavily): the address on Zillow, on Apartments.com and on
+ *   - web searches (Firecrawl): the address on Zillow, on Apartments.com and on
  *     the open web; the building's name the same way when it has one; the
  *     address on the company's own domain
  *
@@ -44,7 +44,7 @@ import { classifyUrl, hostOf, onDomain } from "./foundUrls";
 const JUDGE_MAX = 15;
 
 // A Firecrawl search of up to 10 results costs 2 credits, about $0.011 on our
-// plan (Tavily's basic search, the fallback, is about $0.008).
+// plan.
 const SEARCH_COST_CENTS = 1.1;
 
 const FREE_EMAIL = new Set([
@@ -55,38 +55,17 @@ const FREE_EMAIL = new Set([
 
 /*
  * Web search. Firecrawl first, with the domains written into the query
- * (Wyatt, 2026-11-02: better results, and we have no Tavily credits). Tavily
- * answers only when Firecrawl fails; when Tavily refuses (HTTP 429/432) it is
- * rested for a minute. Calls are spaced out across the whole process so a batch
+ * (Wyatt, 2026-11-02: better results). Firecrawl only since 2026-11-24, with
+ * its backup key. Calls are spaced out across the whole process so a batch
  * does not trip the limit to begin with.
  */
 const SEARCH_GAP_MS = 700;
 let lastSearch = Promise.resolve();
-let tavilyRestUntil = 0;
 
 function spaced() {
   const turn = lastSearch.then(() => new Promise((r) => setTimeout(r, SEARCH_GAP_MS)));
   lastSearch = turn;
   return turn;
-}
-
-async function tavily(query, includeDomains) {
-  const key = process.env.TAVILY_API_KEY;
-  if (!key) return null;
-  if (Date.now() < tavilyRestUntil) return null;
-  const res = await fetch("https://api.tavily.com/search", {
-    method: "POST",
-    headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
-    body: JSON.stringify({ query, max_results: 8, search_depth: "basic", ...(includeDomains ? { include_domains: includeDomains } : {}) }),
-    signal: AbortSignal.timeout(30000),
-  });
-  if (res.status === 429 || res.status === 432) {
-    tavilyRestUntil = Date.now() + 60_000;
-    return null;
-  }
-  if (!res.ok) throw new Error(`Tavily HTTP ${res.status}`);
-  const data = await res.json();
-  return (data.results ?? []).map((r) => ({ url: r.url, title: r.title ?? "", content: String(r.content ?? "").slice(0, 600) }));
 }
 
 async function firecrawlSearch(query, includeDomains) {
@@ -112,10 +91,8 @@ async function search(query, includeDomains = null) {
   } catch (err) {
     firecrawlError = err;
   }
-  const t = await tavily(query, includeDomains);
-  if (t) return { results: t, via: "tavily" };
   if (firecrawlError) throw firecrawlError;
-  throw new Error("no search service available (Firecrawl keys and TAVILY_API_KEY missing or refusing)");
+  throw new Error("no search service available (Firecrawl keys missing or refusing)");
 }
 
 const URL_RE = /\bhttps?:\/\/[^\s<>"')\]]+/gi;

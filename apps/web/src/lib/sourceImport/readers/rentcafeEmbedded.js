@@ -149,7 +149,7 @@ export function parseEmbeddedFloorPlans(html) {
       offers:
         minRent == null
           ? []
-          : [{ rent: minRent, rentIsPerPerson: false, leaseTermMonths: [], availableFrom: dates[0] ?? null, apartments: [] }],
+          : [{ rent: minRent, rentIsPerPerson: false, rentIsExact: false, leaseTermMonths: [], availableFrom: dates[0] ?? null, apartments: [] }],
       rentRange: maxRent && maxRent !== minRent ? [minRent, maxRent] : null,
       availableUnitCount: Number.isFinite(Number(p.availableUnitCount)) ? Number(p.availableUnitCount) : null,
     });

@@ -131,17 +131,23 @@ export function Header({ session }) {
     session?.user?.id && !isLandlordType ? "Add Sublease" : "Add Listing";
 
   // Primary links live inline in the bar; secondary links are tucked under "More".
-  const primaryLinks = [
-    // Find Your Place leads (Wyatt, 2026-11-15).
-    { href: "/find-your-place", label: "Find Your Place" },
-    { href: "/browse", label: "Browse Listings" },
-    { href: addHref, label: addLabel },
-  ];
+  // The tabs depend on who is looking (Wyatt, 2026-11-23). A signed-in landlord
+  // gets Browse Listings and Add Listing. Everyone else (students, admins and
+  // logged-out visitors) gets the student tabs, led by Find Your Place. Whatever
+  // leaves the bar for one audience moves into "More", so no link is lost.
+  const isLandlord = session?.user?.role === "landlord";
+  const findLink = { href: "/find-your-place", label: "Find Your Place" };
+  const browseLink = { href: "/browse", label: "Browse Listings" };
+  const addLink = { href: addHref, label: addLabel };
+  const leaseLink = { href: "/lease-check", label: "Lease Check" };
+  const primaryLinks = isLandlord
+    ? [browseLink, addLink]
+    : [findLink, browseLink, leaseLink];
   const moreLinks = [
+    ...(isLandlord ? [findLink, leaseLink] : [addLink]),
     { href: "/about", label: "Meet the Founder" },
     { href: "/CampusHub", label: "On Campus Hub" },
     { href: "/review", label: "Add a Review" },
-    { href: "/lease-check", label: "Lease Check" },
     { href: "/guides", label: "Guides" },
   ];
   const moreActive = moreLinks.some(({ href }) => isActive(href));

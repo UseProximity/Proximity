@@ -1,0 +1,142 @@
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import { parseBlock, induceRecipe, replayRecipe, compareReads, recipeBroken, deepenUnits, platformRecipeFits } from "./recipe.js";
+
+const TODAY = new Date("2026-11-24T12:00:00Z");
+// Real page text shapes from the 2026-11-24 preview runs.
+const UNION = [
+  "IvaS1\nStudio\n/ 1 Bath\n\u2014\n516 sq. ft\nFrom\n$1,185 per month\n12mo lease\n$500\ndeposit\nView Details\n3 Units Available\nSpecials\nUp to 3 Months Free on Select Lease Terms!",
+  "IvaS10\nStudio\n/ 1 Bath\n\u2014\n460 sq. ft\n$1,165 per month\n12mo lease\n$500\ndeposit\nView Details\nOnly 1 Unit Available!",
+  "IvaS4\nStudio\n/ 1 Bath\n\u2014\n470 sq. ft\nView Details\nWaitlist Available",
+  "BookerA5\nStudio\n/ 1 Bath\n\u2014\n754 sq. ft\n$1,510 per month\n12mo lease\n$500\ndeposit\nView Details\nAvailable Dec 23, 2026",
+  "IvaB1\n2 Bed\n/ 2 Bath\n\u2014\n1,046 sq. ft\n$1,970 per month\n12mo lease\n$500\ndeposit\nView Details\nOnly 1 Unit Available!",
+].join("\n");
+const page = (text) => [{ url: "https://x.test/floorplans/", text: `Floor Plans\nFilters\n${text}\nContact Us` }];
+
+test("a block: exact price, deposit ignored, lease length, date", () => {
+  const b = parseBlock("BookerA5\nStudio\n/ 1 Bath\n\u2014\n754 sq. ft\n$1,510 per month\n12mo lease\n$500\ndeposit\nView Details\nAvailable Dec 23, 2026", TODAY);
+  assert.deepEqual([b.bedrooms, b.bathrooms, b.area], [0, 1, 754]);
+  assert.equal(b.offers.length, 1);
+  assert.deepEqual([b.offers[0].rent, b.offers[0].rentIsExact, b.offers[0].leaseTermMonths, b.offers[0].availableFrom], [1510, true, [12], "2026-12-23"]);
+});
+
+test("a block: From and Starting at are not exact; ranges take the low end", () => {
+  assert.equal(parseBlock("Studio\nFrom\n$1,185 per month").offers[0].rentIsExact, false);
+  assert.equal(parseBlock("1 Bedroom · 1 Bath · 1,207 sq ft · Starting at $2,751/month · Available now").offers[0].rentIsExact, false);
+  const r = parseBlock("Studio+ 1+ ba $1,435 - $2,705 Fees may apply");
+  assert.deepEqual(r.offers.map((o) => [o.rent, o.rentIsExact]), [[1435, false]]);
+});
+
+test("a block: a waitlisted plan with no price is unavailable; Zillow's line reads whole", () => {
+  assert.equal(parseBlock("IvaS4\nStudio\n/ 1 Bath\n470 sq. ft\nView Details\nWaitlist Available").available, false);
+  const z = parseBlock("1 bed, 1 bath · 630 sqft Unit 5560 Status: Available now $995", TODAY);
+  assert.deepEqual([z.bedrooms, z.bathrooms, z.area, z.offers[0].rent, z.offers[0].rentIsExact, z.offers[0].availableNow], [1, 1, 630, 995, true, true]);
+});
+
+test("a recipe made from one read replays it, and IvaS1 is not IvaS10", () => {
+  const truth = [
+    { name: "IvaS1", bedrooms: 0, offers: [{ rent: 1185 }] },
+    { name: "IvaS10", bedrooms: 0, offers: [{ rent: 1165 }] },
+    { name: "IvaS4", bedrooms: 0, offers: [] },
+    { name: "BookerA5", bedrooms: 0, offers: [{ rent: 1510 }] },
+    { name: "IvaB1", bedrooms: 2, offers: [{ rent: 1970 }] },
+  ];
+  const recipe = induceRecipe({ pages: page(UNION), units: truth });
+  assert.equal(recipe.kind, "named");
+  assert.deepEqual(recipe.after, ["studio"]);
+  const replay = replayRecipe(recipe, page(UNION), { today: TODAY });
+  const check = compareReads(replay.units, truth);
+  assert.equal(check.ok, true, check.diffs.join("; "));
+  assert.equal(replay.units.find((u) => u.name === "IvaS10").offers[0].rentIsExact, true);
+  assert.equal(replay.units.find((u) => u.name === "IvaS1").offers[0].rentIsExact, false);
+});
+
+test("a unit the site adds later is found by the shape of the line after its name", () => {
+  const truth = [{ name: "IvaS1", offers: [{ rent: 1185 }] }, { name: "IvaS10", offers: [{ rent: 1165 }] }, { name: "IvaS4", offers: [] }, { name: "BookerA5", offers: [{ rent: 1510 }] }];
+  const recipe = induceRecipe({ pages: page(UNION), units: truth });
+  const later = UNION + "\nKnoxS2\nStudio\n/ 1 Bath\n\u2014\n500 sq. ft\n$1,100 per month\n12mo lease";
+  const replay = replayRecipe(recipe, page(later), { today: TODAY });
+  assert.deepEqual(replay.added, ["KnoxS2"]);
+  assert.equal(replay.units.find((u) => u.name === "KnoxS2").offers[0].rent, 1100);
+});
+
+test("a recipe whose units are gone from the page is broken", () => {
+  const truth = [{ name: "IvaS1", offers: [{ rent: 1185 }] }, { name: "IvaS10", offers: [{ rent: 1165 }] }];
+  const recipe = induceRecipe({ pages: page(UNION), units: truth });
+  const replay = replayRecipe(recipe, [{ url: "https://x.test/floorplans/", text: "We have moved. Visit our new website." }]);
+  assert.equal(recipeBroken(recipe, replay), true);
+});
+
+test("plans listed by size alone get a layout recipe", () => {
+  const icon = "4 Beds | 2 Baths\nPrivate Bedroom | 1,251 Sq. Ft.\nUnit #\nBase Rent\nUnit 111-D\n$725\n12 Months\nView All 17 Available Units\n4 Beds | 2 Baths\nPrivate Bedroom | 1,275 Sq. Ft.\nUnit 261-A\n$725\n12 Months";
+  const recipe = induceRecipe({ pages: page(icon), units: [{ name: null, bedrooms: 4, bathrooms: 2, area: 1251, offers: [{ rent: 725 }] }] });
+  assert.equal(recipe.kind, "layout");
+  const replay = replayRecipe(recipe, page(icon));
+  assert.deepEqual(replay.units.map((u) => [u.bedrooms, u.area, u.offers[0].rent, u.offers[0].rentIsPerPerson]), [[4, 1251, 725, true], [4, 1275, 725, true]]);
+});
+
+test("digging deeper never takes a price from a page that only lists the plans", () => {
+  const mk = (name) => ({ name, offers: [{ rent: 1000, rentIsExact: false }] });
+  const units = ["Olive", "Pine", "Chestnut", "Market"].map(mk);
+  // The Shelby's availability page: every plan in a filter, then one apartment's price.
+  const filter = { url: "https://x.test/availability", text: "Olive\nPine\nChestnut\nMarket\nClear\nDone\nMax Rent\nApartment #\nPlease select an apartment.\n#602\n$1,305.00 / month" };
+  deepenUnits(units, [filter]);
+  assert.ok(units.every((u) => u.offers[0].rent === 1000 && u.offers[0].rentIsExact === false));
+  // A page with each plan's own block and price is taken.
+  const real = { url: "https://x.test/prices", text: "Olive\n1 Bed\n$1,120 / month\nPine\n1 Bed\n$1,180 / month\nChestnut\n1 Bed\nCall for details\nMarket\n1 Bed\n$1,075 / month" };
+  deepenUnits(units, [real]);
+  assert.deepEqual(units.map((u) => [u.offers[0].rent, u.offers[0].rentIsExact]), [[1120, true], [1180, true], [1000, false], [1075, true]]);
+});
+
+test("a starting price with one unit left is that unit's price", () => {
+  const one = parseBlock("BlakeS1\nStudio\n/ 1 Bath\n496 sq. ft\nFrom\n$1,165 per month\n$500\ndeposit\nView Details\nOnly 1 Unit Available!");
+  assert.equal(one.offers.length, 1);
+  assert.equal(one.offers[0].rent, 1165);
+  assert.equal(one.offers[0].rentIsExact, true);
+  assert.equal(one.offers[0].onlyUnit, true);
+  const many = parseBlock("A1\n1 Bed\n/ 1 Bath\nFrom\n$1,611 per month\nView Details\n3 Units Available");
+  assert.equal(many.offers[0].rentIsExact, false);
+  assert.equal(many.offers[0].onlyUnit, undefined);
+  const eleven = parseBlock("A2\n1 Bed\nFrom\n$1,611 per month\n11 Units Available");
+  assert.equal(eleven.offers[0].rentIsExact, false);
+  const range = parseBlock("A3\n1 Bed\n$1,400 - $1,600\n1 Unit Available");
+  assert.equal(range.offers[0].rentIsExact, false);
+});
+
+test("a unit's block ends at the next unit's name, even one placed earlier on the page", () => {
+  const text = [
+    "BlakeA1", "1 Bed", "/ 1 Bath", "From", "$1,300 per month", "View Details",
+    "MarshB1", "2 Bed", "/ 2 Bath", "1,075 sq. ft", "View Details", "Waitlist Available",
+    "Specials", "Up to 3 Months Free",
+    "BlakeA1", "1 Bed, 1 Bath, 628 SqFt", "1 Available", "$1,395 per month", "12mo lease",
+    "AsheA1", "1 Bed, 1 Bath, 745 SqFt", "3 Available", "$1,575 per month",
+  ].join("\n");
+  const recipe = { v: 1, kind: "named", pages: ["https://x.test/plans"], after: null, names: ["BlakeA1", "MarshB1", "AsheA1"] };
+  const { units } = replayRecipe(recipe, [{ url: "https://x.test/plans", text }]);
+  const marsh = units.find((u) => u.name === "MarshB1");
+  assert.equal(marsh.offers.length, 0);
+  assert.equal(marsh.available, false);
+});
+
+test("a listing's short unit names never latch onto other text", () => {
+  const page = { url: "https://x.test/plans", text: "Apartment A\nStudio / 1 Bath\n$1,350 per month\n\nApartment B\n1 Bed / 1 Bath\n$1,600 per month" };
+  const recipe = { v: 1, kind: "named", pages: [page.url], after: null, names: ["Apartment A", "Apartment B"] };
+  const r = replayRecipe(recipe, [page], { known: ["1", "A", "Apartment A"], today: TODAY });
+  assert.deepEqual(r.units.map((u) => u.name).sort(), ["Apartment A", "Apartment B"]);
+  assert.equal(r.units.find((u) => u.name === "Apartment A").offers[0].rent, 1350);
+});
+
+test("a listing name of 3 or more characters is found only at the start of a line", () => {
+  const page = { url: "https://x.test/plans", text: "Floor plans: see Pershing below\nAzure\nStudio / 1 Bath\n$1,100 per month\nPershing\n2 Bed / 2 Bath\n$1,900 per month" };
+  const recipe = { v: 1, kind: "named", pages: [page.url], after: null, names: ["Azure"] };
+  const r = replayRecipe(recipe, [page], { known: ["Pershing"], today: TODAY });
+  assert.equal(r.units.find((u) => u.name === "Pershing").offers[0].rent, 1900);
+});
+
+test("another building's platform recipe fits only when it finds most of this listing's units", () => {
+  const units = [{ name: "Azure" }, { name: "Ruby" }];
+  assert.equal(platformRecipeFits(units, ["Azure", "Ruby", "Honey"]), true);
+  assert.equal(platformRecipeFits(units, ["Azure", "Sapphire", "Honey", "Rose"]), false);
+  // Nothing to check it against: not trusted.
+  assert.equal(platformRecipeFits(units, ["Studio", "1 Bedroom"]), false);
+});

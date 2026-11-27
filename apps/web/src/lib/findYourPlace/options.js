@@ -25,6 +25,49 @@ export const LEASE_OPTIONS = [
 ];
 export const BUDGET_MIN = 100;
 export const BUDGET_MAX = 20000;
+
+/*
+ * Budget is a range per person per month (Wyatt, 2026-11-25), picked rather
+ * than typed unless the student chooses "Other".
+ *   answers.budget     the top of the range: a number, NO_MAX, NO_PREFERENCE,
+ *                      or null (not answered). Kept under its old name so
+ *                      saved runs, the browse hand-off and the hard rent
+ *                      filter all carry on reading it as the maximum.
+ *   answers.budgetMin  the bottom of the range: a number or null (no minimum).
+ *                      A soft signal only: cheaper places are never dropped,
+ *                      the matcher is just told the price level they expect.
+ */
+export const NO_MAX = "No max";
+// The steps Find Your Place's Min and Max lists offer.
+export const BUDGET_STEPS = [500, 750, 1000, 1250, 1500, 1750, 2000, 2250, 2500];
+// The homepage bar's one-tap brackets. They sit on the same steps, so a
+// bracket lands on values Find Your Place's lists already hold.
+export const BUDGET_BRACKETS = [
+  { id: "under-750", min: null, max: 750 },
+  { id: "750-1000", min: 750, max: 1000 },
+  { id: "1000-1250", min: 1000, max: 1250 },
+  { id: "1250-1500", min: 1250, max: 1500 },
+  { id: "1500-2000", min: 1500, max: 2000 },
+  { id: "2000-up", min: 2000, max: NO_MAX },
+];
+
+export const money = (n) => `$${Number(n).toLocaleString("en-US")}`;
+
+// "$1,000–$1,250", "Up to $750", "$2,000+", "Any budget" or "No preference".
+// "" while nothing is picked.
+export function budgetRangeLabel(min, max) {
+  if (max === NO_PREFERENCE) return NO_PREFERENCE;
+  const hasMin = typeof min === "number";
+  if (typeof max === "number") return hasMin ? `${money(min)}\u2013${money(max)}` : `Up to ${money(max)}`;
+  if (max === NO_MAX) return hasMin ? `${money(min)}+` : "Any budget";
+  return "";
+}
+
+// A number the search accepts as rent per person, else null.
+export function budgetAmount(v) {
+  const n = Math.round(Number(v));
+  return v !== null && v !== "" && Number.isFinite(n) && n >= BUDGET_MIN && n <= BUDGET_MAX ? n : null;
+}
 export const LEASE_OTHER_MIN = 1;
 export const LEASE_OTHER_MAX = 24;
 
@@ -155,7 +198,7 @@ export const QUESTION_COUNT = 5;
 // API route: nothing unrecognised reaches the matcher.
 export function sanitizeAnswers(raw) {
   const a = raw && typeof raw === "object" ? raw : {};
-  const out = { group: null, budget: null, lease: null, moveIn: null, modes: [], commuteMax: null };
+  const out = { group: null, budget: null, budgetMin: null, lease: null, moveIn: null, modes: [], commuteMax: null };
 
   if (a.group === NO_PREFERENCE) out.group = NO_PREFERENCE;
   else {
@@ -163,10 +206,13 @@ export function sanitizeAnswers(raw) {
     if (Number.isFinite(n) && n >= 1 && n <= BIG_GROUP_MAX) out.group = String(n);
   }
 
-  if (a.budget === NO_PREFERENCE) out.budget = NO_PREFERENCE;
-  else {
-    const n = Math.round(Number(a.budget));
-    if (Number.isFinite(n) && n >= BUDGET_MIN && n <= BUDGET_MAX) out.budget = n;
+  if (a.budget === NO_PREFERENCE || a.budget === NO_MAX) out.budget = a.budget;
+  else out.budget = budgetAmount(a.budget);
+  // A minimum only means something under a real top of the range, and only
+  // below it: "No preference" clears it, and a backwards range drops it.
+  if (out.budget !== null && out.budget !== NO_PREFERENCE) {
+    const min = budgetAmount(a.budgetMin);
+    if (min !== null && (out.budget === NO_MAX || min < out.budget)) out.budgetMin = min;
   }
 
   if (a.lease === NO_PREFERENCE) out.lease = NO_PREFERENCE;
